@@ -144,8 +144,6 @@ class PerpMarketMaker:
         self._publish_metrics = time.time()
         self._metrics_publish_interval = 30
 
-        # signal.signal(signal.SIGTERM, self.graceful_shutdown)
-        # signal.signal(signal.SIGINT, self.graceful_shutdown)
 
     @property
     def order_refresh_time_ms(self) -> float:
@@ -327,16 +325,14 @@ class PerpMarketMaker:
         _order_increment = self.order_level_amount_bps / D(10_000) * self.order_amount
         for level in range(0, self.buy_levels):
             price = self.get_fair_price(side=Side.BUY) * (D("1") - self.bid_spread) - ((np.exp(self.order_level_spread_lambda * level) - 1) * _num_ticks_increment)
-            # price = market.quantize_order_price(self.market, price)
             size = self.order_amount + (_order_increment * (np.exp(self.order_size_spread_lambda * level) - 1))
-            # size = market.quantize_order_amount(self.market, size)
+
             if size > 0:
                 buys.append(PriceSize(price, size))                   
         for level in range(0, self.sell_levels):
             price = self.get_fair_price(side=Side.SELL) * (D("1") + self.ask_spread) + ((np.exp(self.order_level_spread_lambda * level) - 1) * _num_ticks_increment)
-            # price = market.quantize_order_price(self.market, price)
             size = self.order_amount + (_order_increment * (np.exp(self.order_size_spread_lambda * level) - 1))
-            # size = market.quantize_order_amount(self.market, size)
+
             if size > 0:
                 sells.append(PriceSize(price, size))
 
@@ -761,6 +757,10 @@ class PerpMarketMaker:
             self._publish_strat_metric('market_spread', market_ask - market_bid)
             self._publish_strat_metric('final_ask', final_ask)
             self._publish_strat_metric('final_bid', final_bid)
+            
+            quoted_mid = (final_bid + final_ask) / 2
+            market_mid = (market_ask + market_bid) / 2
+            self._publish_strat_metric('ratio_quoted_market', quoted_mid / market_mid - 1)
     
         if side == Side.BUY:
             return final_bid
