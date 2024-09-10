@@ -69,7 +69,11 @@ class PerpMarketMaker:
 
 
 
-    def __init__(self, loop: asyncio.AbstractEventLoop):
+    def __init__(self, loop: asyncio.AbstractEventLoop, 
+            rm: RiskManager=RiskManager, 
+            pm: ParamsManager=ParamsManager, 
+            mp: MetricsPublisher=MetricsPublisher
+        ):
         self.logger = logging.getLogger(self.__class__.__name__)
         self.loop = loop
 
@@ -87,9 +91,6 @@ class PerpMarketMaker:
         self._smoothen_basis: ExponentialMovingAverage = None
         self._smoothen_funding_rate: ExponentialMovingAverage = None
         self._rolling_vol: RollingAnnualizedVolatility = None
-
-        self._metrics_pub = MetricsPublisher()
-        self._risk_manager = RiskManager(parent=self)
 
         self._next_order_timestamp = 0
         self.min_order_insert_delay_ms = 200
@@ -134,7 +135,9 @@ class PerpMarketMaker:
             Param(self.PARAM_BULK_REQUESTS, 'True', bool)
         ]
 
-        self._params_manager = ParamsManager(parent=self, params=strategy_parameters)
+        self._metrics_pub = mp()
+        self._risk_manager = rm(parent=self)
+        self._params_manager = pm(parent=self, params=strategy_parameters)
 
         self._reeval_task = None
 
