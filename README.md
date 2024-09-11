@@ -67,27 +67,27 @@ export PARAM_NAME=value
 ```
 ### Available Parameters
 
-- `PARAM_CLOSE_ONLY_MODE`: Enable close-only mode
+- `PARAM_CLOSE_ONLY_MODE`: Enable close-only mode - when enabled the strategy will only quote on the side that reduces the positon.
 - `PARAM_ENABLED`: Enable/disable the strategy
-- `PARAM_ORDER_LEVEL_SPREAD`: Spread between order levels
-- `PARAM_ORDER_LEVEL_AMOUNT_PCT`: Percentage of order amount per level
-- `PARAM_ORDER_REFRESH_TIME_SEC`: Time interval for refreshing orders
-- `PARAM_ORDER_REFRESH_TOLERANCE_PCT`: Tolerance for order refreshing
+- `PARAM_ORDER_LEVEL_SPREAD`: Spread between order levels (in tick size terms)
+- `PARAM_ORDER_LEVEL_AMOUNT_PCT`: Percentage of order amount increase per level quoted
+- `PARAM_ORDER_REFRESH_TIME_SEC`: Minimum time interval for refreshing orders (in seconds)
+- `PARAM_ORDER_REFRESH_TOLERANCE_PCT`: Tolerance for order refreshing - a new order will only be inserted if the difference between the current live order and the intended price is bigger than the tolerance threshold
 - `PARAM_BUY_LEVELS`: Number of buy levels
 - `PARAM_SELL_LEVELS`: Number of sell levels
-- `PARAM_BID_SPREAD`: Spread for bid orders
-- `PARAM_ASK_SPREAD`: Spread for ask orders
+- `PARAM_BID_SPREAD`: Spread for bid orders (in bps)
+- `PARAM_ASK_SPREAD`: Spread for ask orders (in bps)
 - `PARAM_MINIMUM_SPREAD`: Minimum allowed spread
 - `PARAM_ORDER_AMOUNT_USD`: Order amount in USD
-- `PARAM_POS_LEAN_BPS_PER_100K_USD`: Position leaning in basis points per 100K USD
+- `PARAM_POS_LEAN_BPS_PER_100K_USD`: Position leaning in bps per $100K in the instrument. It influences how the algorithm adjusts its bid and ask prices to counterbalance existing positions. For instance, if the market maker holds a large long position, increasing this parameter would cause the algorithm to set lower ask prices to encourage selling, helping to reduce the long exposure.
+- `PARAM_GLOBAL_POS_LEAN_BPS_PER_100K_USD`: Global position leaning in bps per $100K in the account
 - `PARAM_MAX_POSITION_USD`: Maximum position size in USD
 - `PARAM_TAKER_THRESHOLD_BPS`: Threshold for taker orders in basis points
-- `PARAM_PRICE_EMA_SEC`: EMA period for price in seconds
+- `PARAM_PRICE_EMA_SEC`: EMA period for price in seconds. A shorter half-life increases the EMA's responsiveness to recent market changes. A longer half-life reduces reactivity to minor fluctuations.
 - `PARAM_FR_EMA_SEC`: EMA period for funding rate in seconds
 - `PARAM_BASIS_EMA_SEC`: EMA period for basis in seconds
 - `PARAM_MAX_LEVERAGE`: Maximum allowed leverage
 - `PARAM_MAX_MARGIN_RATIO`: Maximum margin ratio
-- `PARAM_GLOBAL_POS_LEAN_BPS_PER_100K_USD`: Global position leaning in basis points per 100K USD
 - `PARAM_PRICE_CEILING`: Upper price limit
 - `PARAM_PRICE_FLOOR`: Lower price limit
 
