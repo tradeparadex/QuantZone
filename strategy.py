@@ -722,9 +722,18 @@ class PerpMarketMaker:
         self.logger.debug(f"raw: {raw_spot:.4g}, fr_adj: {fr_adj:.4g}, pos_lean: {pos_lean:.4g}, pos_adj: {pos_adj_price:.4f},")
 
         volatility = self._rolling_vol.get_value()
-        vol_nonlinear = np.exp(volatility)
+        
+        # Define a base volatility threshold
+        base_volatility = D(0.03)  # Adjust this based on what you consider "normal" volatility
+
+        # Calculate the ratio of current volatility to base volatility
+        vol_ratio = volatility / base_volatility
+
+        # Apply a power function to exaggerate changes
+        exponent = D(3.5)  # Adjust this to control the sensitivity
+        vol_nonlinear = min(2, np.power(vol_ratio, exponent))
         vol_adj = vol_nonlinear * self.pricing_volatility_factor / 2
-        self.logger.debug(f"ann_vol: {volatility:.4g}, {vol_adj:.6f}, vol_spread: {_base_price * vol_adj}")
+        self.logger.info(f"ann_vol: {volatility:.4g}, ratio: {vol_ratio}, nonlin: {vol_nonlinear} adj: {vol_adj:.6f}, vol_spread: {_base_price * vol_adj}")
 
         vol_adj_ask = pos_adj_ask + _base_price * vol_adj
         vol_adj_bid = pos_adj_bid - _base_price * vol_adj
