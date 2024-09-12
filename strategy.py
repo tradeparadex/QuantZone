@@ -446,7 +446,7 @@ class PerpMarketMaker:
 
     async def apply_budget_constraint(self, proposal: Proposal):
         if await self.is_close_only_mode:
-            tot_pos_usd = self.get_global_position_usd()
+            tot_pos_usd = self.get_active_position(self.market)
             if tot_pos_usd >= 0:
                 proposal.buys = []
             elif tot_pos_usd <= 0:
