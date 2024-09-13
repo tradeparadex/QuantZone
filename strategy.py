@@ -350,13 +350,13 @@ class PerpMarketMaker:
         _num_ticks_increment = self.order_level_spread * market.trading_rules[self.market].min_price_increment
         _order_increment = self.order_level_amount_bps / D(10_000) * self.order_amount
         for level in range(0, self.buy_levels):
-            price = self.get_fair_price(side=Side.BUY) * (D("1") - self.bid_spread) - ((np.exp(self.order_level_spread_lambda * level) - 1) * _num_ticks_increment)
+            price = self.get_fair_price(side=Side.BUY) - ((np.exp(self.order_level_spread_lambda * level) - 1) * _num_ticks_increment)
             size = self.order_amount + (_order_increment * (np.exp(self.order_size_spread_lambda * level) - 1))
 
             if size > 0:
                 buys.append(PriceSize(price, size))                   
         for level in range(0, self.sell_levels):
-            price = self.get_fair_price(side=Side.SELL) * (D("1") + self.ask_spread) + ((np.exp(self.order_level_spread_lambda * level) - 1) * _num_ticks_increment)
+            price = self.get_fair_price(side=Side.SELL) + ((np.exp(self.order_level_spread_lambda * level) - 1) * _num_ticks_increment)
             size = self.order_amount + (_order_increment * (np.exp(self.order_size_spread_lambda * level) - 1))
 
             if size > 0:
@@ -770,8 +770,8 @@ class PerpMarketMaker:
 
         raw_adj = self.price_adjustment
 
-        fair_ask = base_ask + _base_price * (factored_basis - factored_fr + pos_adj + vol_adj + raw_adj)
-        fair_bid = base_bid + _base_price * (factored_basis - factored_fr + pos_adj - vol_adj + raw_adj)
+        fair_ask = base_ask + _base_price * (factored_basis - factored_fr + pos_adj + vol_adj + raw_adj + self.ask_spread)
+        fair_bid = base_bid + _base_price * (factored_basis - factored_fr + pos_adj - vol_adj + raw_adj - self.bid_spread)
 
         if not market_ask.is_finite():
             self.logger.warning("Market ask is not finite. Widen more.")
@@ -785,11 +785,14 @@ class PerpMarketMaker:
         else:
             final_bid = fair_bid
 
+
+
         if publish:
             self._publish_strat_metric('spot', raw_spot)
             self._publish_strat_metric('spot_ema', raw_spot_ema)
             self._publish_strat_metric('volatility_adj', vol_adj)
             self._publish_strat_metric('price_adjustment', raw_adj)
+            self._publish_strat_metric('spread_adj', self.ask_spread + self.bid_spread)
             self._publish_strat_metric('basis_adj', factored_basis)
             self._publish_strat_metric('fr_adj', factored_fr)
             self._publish_strat_metric('pos_adj_loc', pos_lean)
