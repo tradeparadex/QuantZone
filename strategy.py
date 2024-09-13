@@ -770,8 +770,8 @@ class PerpMarketMaker:
 
         raw_adj = self.price_adjustment
 
-        fair_ask = base_ask + _base_price * (factored_basis - _base_price + pos_adj + vol_adj + raw_adj)
-        fair_bid = base_bid + _base_price * (factored_basis - _base_price + pos_adj - vol_adj + raw_adj)
+        fair_ask = base_ask + _base_price * (factored_basis - factored_fr + pos_adj + vol_adj + raw_adj)
+        fair_bid = base_bid + _base_price * (factored_basis - factored_fr + pos_adj - vol_adj + raw_adj)
 
         if not market_ask.is_finite():
             self.logger.warning("Market ask is not finite. Widen more.")
