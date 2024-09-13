@@ -43,6 +43,19 @@ pip install -r requirements.txt
 python start.py
 ```
 
+### Authentication
+
+To authenticate with Paradex, you need to provide your Wallet address and private key. You can get more information in the [Paradex API documentation](https://docs.paradex.trade/developer-portal/general-information/api-quick-start).
+
+You can then set the `PARADEX_L1_ADDRESS` and `PARADEX_PRIVATE_KEY` environment variables. See below for more details. You will also need to set the `PARADEX_ENVIRONMENT` environment variable to `mainnet` or `testnet`.
+
+Example:
+```
+export PARADEX_L1_ADDRESS="0x1234567890123456789012345678901234567890"
+export PARADEX_PRIVATE_KEY="0x1234567890123456789012345678901234567890123456789012345678901234"
+export PARADEX_ENVIRONMENT="testnet"
+```
+
 ### How to Set Parameters
 
 Parameters can be passed as environment variables. Here are examples for different setups:
@@ -71,7 +84,7 @@ export PARAM_NAME=value
 - `PARAM_ENABLED`: Enable/disable the strategy
 - `PARAM_ORDER_LEVEL_SPREAD`: Spread between order levels (in tick size terms)
 - `PARAM_ORDER_LEVEL_AMOUNT_PCT`: Percentage of order amount increase per level quoted
-- `PARAM_ORDER_REFRESH_TIME_SEC`: Minimum time interval for refreshing orders (in seconds)
+- `ALGO_PARAMS_ORDER_INSERT_TIME_SEC`: Minimum time interval for refreshing orders (in seconds)
 - `PARAM_ORDER_REFRESH_TOLERANCE_PCT`: Tolerance for order refreshing - a new order will only be inserted if the difference between the current live order and the intended price is bigger than the tolerance threshold
 - `PARAM_BUY_LEVELS`: Number of buy levels
 - `PARAM_SELL_LEVELS`: Number of sell levels
@@ -90,6 +103,7 @@ export PARAM_NAME=value
 - `PARAM_MAX_MARGIN_RATIO`: Maximum margin ratio
 - `PARAM_PRICE_CEILING`: Upper price limit
 - `PARAM_PRICE_FLOOR`: Lower price limit
+- `ALGO_PARAMS_PRICE_SOURCES`: External markets to use for pricing. Format is `EXCHANGE:INSTRUMENT`, for example `binance_spot:BTCUSDT`. Leave empty to use the instrument price only.
 
 ## How to Build
 
