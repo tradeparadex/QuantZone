@@ -65,6 +65,7 @@ class PerpMarketMaker:
     PARAM_BULK_REQUESTS = "bulk_requests"
     PARAM_BASE_VOLATILITY = "base_volatility"
     PARAM_VOLATILITY_EXPONENT = "volatility_exponent"
+    PARAM_VOLATILITY_CAP = "volatility_cap"
 
 
 
@@ -99,7 +100,8 @@ class PerpMarketMaker:
 
         self._next_order_timestamp = 0
         self._next_reeval_timestamp = 0
-
+        self._last_system_health_ok = self.now_ms()
+        
         self.processing = False
 
         strategy_parameters = [
@@ -139,7 +141,8 @@ class PerpMarketMaker:
             Param(self.PARAM_PRICE_FLOOR, '0', D),
             Param(self.PARAM_BULK_REQUESTS, 'True', bool),
             Param(self.PARAM_BASE_VOLATILITY, '0.05', D),
-            Param(self.PARAM_VOLATILITY_EXPONENT, '2', D)
+            Param(self.PARAM_VOLATILITY_EXPONENT, '2', D),
+            Param(self.PARAM_VOLATILITY_CAP, '1', D)
         ]
 
         self._metrics_pub = mp()
@@ -170,6 +173,10 @@ class PerpMarketMaker:
     @property
     def base_volatility(self) -> D:
         return self._params_manager.get_param_value(self.PARAM_BASE_VOLATILITY)
+
+    @property
+    def volatility_cap(self) -> D:
+        return self._params_manager.get_param_value(self.PARAM_VOLATILITY_CAP)
     
     @property
     def volatility_exponent(self) -> D:
@@ -542,7 +549,8 @@ class PerpMarketMaker:
         else:
             for order in all_orders:
                 self.market_connector.insert_order(order)
-                self._publish_strat_metric("order_insert", 1)
+        
+        self._publish_strat_metric("order_insert", len(all_orders))
 
     def market_data_ready(self) -> bool:
         if self.market not in self.market_connector.orderbooks:
@@ -581,7 +589,13 @@ class PerpMarketMaker:
             self.logger.warning("System health deteriorated. Market making will be halted.")
             self.cancel_all_orders()
             self.processing = False
+
+            if self.now_ms() - self._last_system_health_ok > 20 * 60 * 1000:
+                # re-subscribe to data channels
+                await self._subscribe_to_data()
             return
+        else:
+            self._last_system_health_ok = self.now_ms()
 
         if self.now_ms() < self._next_reeval_timestamp:
             self.processing = False
@@ -694,12 +708,6 @@ class PerpMarketMaker:
         self._smoothen_spot_price.update(_price, timestamp)
         self._rolling_vol.update(_price, timestamp)
 
-    def get_smooth_funding_rate_adjustment(self) -> float:
-        rate = self.get_inst_rate()
-        self.logger.debug(f"inst_rate: {rate:.4g}, smooth_rate: {self._smoothen_funding_rate.value:.4g}")
-        fr_adjustment = self._smoothen_funding_rate.value * (self._smoothen_funding_rate.half_life / 5)
-        return fr_adjustment
-
     def get_base_price(self, price_type) -> float:
         if self.external_connector is None:
             raw_spot = self.get_price_by_type(price_type)
@@ -715,7 +723,7 @@ class PerpMarketMaker:
 
         # Apply a power function to exaggerate changes
         exponent = self.volatility_exponent
-        vol_nonlinear = min(2, np.power(vol_ratio, exponent))
+        vol_nonlinear = min(self.volatility_cap, np.power(vol_ratio, exponent))
         vol_adj = vol_nonlinear * self.pricing_volatility_factor / 2
 
         if publish:
@@ -736,10 +744,11 @@ class PerpMarketMaker:
         raw_spot_ema = self._smoothen_spot_price.value
         self.logger.debug(f"raw_spot: {raw_spot:.6f}, raw_spot_ema: {raw_spot_ema:.6f}")
 
-        raw_basis_ema = self._smoothen_basis.value    
-        fr_adj = self.get_smooth_funding_rate_adjustment()
+        raw_basis_ema = self._smoothen_basis.value
+        raw_fr = self.get_inst_rate()
+        raw_fr_ema = self._smoothen_funding_rate.value
 
-        self.logger.debug(f"raw_basis: {raw_basis_ema:.6f}, fr_adj: {fr_adj:.6f}")
+        self.logger.debug(f"raw_basis: {raw_basis_ema:.6f}, raw_fr_ema: {raw_fr_ema:.6f}")
         _base_price = raw_spot_ema
         factored_basis = raw_basis_ema * self.pricing_basis_factor
 
@@ -747,7 +756,7 @@ class PerpMarketMaker:
         base_bid = min(raw_spot, raw_spot_ema)
         self.logger.debug(f"factored_basis: {factored_basis:.6f}")
 
-        factored_fr = fr_adj * self.pricing_funding_rate_factor
+        factored_fr = raw_fr_ema * self.pricing_funding_rate_factor
         self.logger.debug(f"factored_fr: {factored_fr:.6f}")
     
         cur_pos = self.get_active_position(self.market)
@@ -790,18 +799,22 @@ class PerpMarketMaker:
         if publish:
             self._publish_strat_metric('spot', raw_spot)
             self._publish_strat_metric('spot_ema', raw_spot_ema)
+            self._publish_strat_metric('basis_ema', raw_basis_ema)
+            self._publish_strat_metric('fr_ema', raw_fr_ema)
+            self._publish_strat_metric('fr', raw_fr)
             self._publish_strat_metric('volatility_adj', vol_adj)
             self._publish_strat_metric('price_adjustment', raw_adj)
             self._publish_strat_metric('spread_adj', self.ask_spread + self.bid_spread)
             self._publish_strat_metric('basis_adj', factored_basis)
-            self._publish_strat_metric('fr_adj', factored_fr)
+            self._publish_strat_metric('fr_adj', -factored_fr)
             self._publish_strat_metric('pos_adj_loc', pos_lean)
             self._publish_strat_metric('pos_adj_global', global_pos_lean)
             self._publish_strat_metric('quote_spread', final_ask - final_bid)
             self._publish_strat_metric('market_spread', market_ask - market_bid)
             self._publish_strat_metric('final_ask', final_ask)
             self._publish_strat_metric('final_bid', final_bid)
-            
+            self._publish_strat_metric('market_bid', market_bid)
+            self._publish_strat_metric('market_ask', market_ask)
             self._publish_strat_metric('ratio_quoted_market_bid', final_bid / market_bid - 1)
             self._publish_strat_metric('ratio_quoted_market_ask', final_ask / market_ask - 1)
     
@@ -847,9 +860,13 @@ class PerpMarketMaker:
     def get_inst_rate(self) -> D:
         if self.market not in self.market_connector.latest_fundings:
             return D(0)
+        
         eigth_hr_rate = self.market_connector.latest_fundings[self.market]['funding_rate']
+        
+        # Annualized rate to per-second rate
         payment_freq_seconds = 5
-        inst_rate = D(eigth_hr_rate) / D(8 * 60 * 60 / payment_freq_seconds)
+        periods_per_year = 365.25 * 24 / 8  # Number of 8-hour periods in a year
+        inst_rate = D(eigth_hr_rate) * D(periods_per_year) / D(payment_freq_seconds)
         return inst_rate
 
     def get_inst_basis(self) -> D:
@@ -874,6 +891,13 @@ class PerpMarketMaker:
     async def on_trade(self, data: dict):
         self.logger.info(f"on_trade: {data}")
 
+    async def _subscribe_to_data(self):
+        await self.market_connector.subscribe_to_data_channels(self.market, self.on_market_data)
+        await self.market_connector.subscribe_to_trade_channels(self.market, self.on_trade)
+        
+        if self.external_connector is not None:
+            await self.external_connector.subscribe_to_data_channels(self.external_markets.split(':')[-1], self.on_market_data)
+
     async def run(self):
 
         self.start()
@@ -883,11 +907,11 @@ class PerpMarketMaker:
 
         await self.market_connector.start()
         await self.market_connector.setup_trading_rules(self.market)
-        await self.market_connector.subscribe_to_data_channels(self.market, self.on_market_data)
-        await self.market_connector.subscribe_to_trade_channels(self.market, self.on_trade)
 
         await self.external_connector.start()
-        await self.external_connector.subscribe_to_data_channels(self.external_markets.split(':')[-1], self.on_market_data)
+
+        await self._subscribe_to_data()
+        
 
         while True:
             self.logger.info("Cycle evaluation...")
