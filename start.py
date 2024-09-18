@@ -1,9 +1,9 @@
 import asyncio
 import logging
-
+import os
 # Configure the logging
 logging.basicConfig(
-    level=logging.INFO,  # Set the logging level
+    level=os.environ.get('LOG_LEVEL', 'INFO'),  # Set the logging level
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',  # Set the log message format
     datefmt='%Y-%m-%d %H:%M:%S',  # Set the date and time format
     # filename='app.log',  # Log messages to a file

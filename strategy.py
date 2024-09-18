@@ -4,7 +4,7 @@ import os
 import time
 from decimal import Decimal as D
 from typing import List
-
+import traceback
 import numpy as np
 from connectors.base_connector import _get_connector
 from utils.async_utils import safe_ensure_future
@@ -569,70 +569,79 @@ class PerpMarketMaker:
             self.logger.warning("Volatility not ready.")
             return False
         
+        if self.get_price_by_type(PriceType.Mid) is None:
+            self.logger.warning("Mid price not set.")
+            return False
+        
         return True
 
 
     async def reeval(self, trigger: TriggerType):
         if self.processing:
-            self.logger.info("Already processing. Skipping reeval.")
+            self.logger.warning("Already processing. Skipping reeval.")
             return
         
         self.processing = True
 
-        if not self.is_enabled:
-            self.logger.info("Strategy is disabled. Skipping reeval.")
-            self.cancel_all_orders()
+        try:
+
+            if not self.is_enabled:
+                self.logger.info("Strategy is disabled. Skipping reeval.")
+                self.cancel_all_orders()
+                self.processing = False
+                return
+
+            if not self._risk_manager.is_system_health_ok():
+                self.logger.warning("System health deteriorated. Market making will be halted.")
+                self.cancel_all_orders()
+                self.processing = False
+
+                if self.now_ms() - self._last_system_health_ok > 20 * 60 * 1000:
+                    # re-subscribe to data channels
+                    await self._subscribe_to_data()
+                return
+            else:
+                self._last_system_health_ok = self.now_ms()
+
+            if self.now_ms() < self._next_reeval_timestamp:
+                self.processing = False
+                return
+            else:
+                self._next_reeval_timestamp = self.now_ms() + self.reevaluation_time_sec
+
+            if not self.market_data_ready():
+                self.processing = False
+                return
+
+            proposal = self.create_base_proposal()
+            self.logger.debug(f"Initial proposals: {proposal}")
+
+            # 2. Apply functions that limit numbers of buys and sells proposal
+            self.apply_order_levels_modifiers(proposal)
+            self.logger.debug(f"Proposals after order level modifier: {proposal}")
+            
+            # 4. Apply taker threshold, i.e. don't take more than a certain percentage of the market.
+            self.filter_out_takers(proposal)
+            self.logger.debug(f"Proposals after takers filter: {proposal}")
+
+            await self.apply_budget_constraint(proposal)
+            self.logger.debug(f"Proposals after budget constraint: {proposal}")
+
+            self.quantize_values(proposal)
+            self.logger.debug(f"Proposals after quantization: {proposal}")
+
+            self.cancel_active_orders(proposal)
+            self.logger.debug(f"Filtered proposal: {proposal}")
+
+            self.cancel_orders_below_min_spread()
+            self.logger.info(f"final proposal: {proposal}")
+
+            self.execute_orders_proposal(proposal)
+        except Exception as e:
+            self.logger.error(f"Error in reeval: {e}")
+            self.logger.error(traceback.format_exc())
+        finally:
             self.processing = False
-            return
-
-        if not self._risk_manager.is_system_health_ok():
-            self.logger.warning("System health deteriorated. Market making will be halted.")
-            self.cancel_all_orders()
-            self.processing = False
-
-            if self.now_ms() - self._last_system_health_ok > 20 * 60 * 1000:
-                # re-subscribe to data channels
-                await self._subscribe_to_data()
-            return
-        else:
-            self._last_system_health_ok = self.now_ms()
-
-        if self.now_ms() < self._next_reeval_timestamp:
-            self.processing = False
-            return
-        else:
-            self._next_reeval_timestamp = self.now_ms() + self.reevaluation_time_sec
-
-        if not self.market_data_ready():
-            self.processing = False
-            return
-
-        proposal = self.create_base_proposal()
-        self.logger.debug(f"Initial proposals: {proposal}")
-
-        # 2. Apply functions that limit numbers of buys and sells proposal
-        self.apply_order_levels_modifiers(proposal)
-        self.logger.debug(f"Proposals after order level modifier: {proposal}")
-        
-        # 4. Apply taker threshold, i.e. don't take more than a certain percentage of the market.
-        self.filter_out_takers(proposal)
-        self.logger.debug(f"Proposals after takers filter: {proposal}")
-
-        await self.apply_budget_constraint(proposal)
-        self.logger.debug(f"Proposals after budget constraint: {proposal}")
-
-        self.quantize_values(proposal)
-        self.logger.debug(f"Proposals after quantization: {proposal}")
-
-        self.cancel_active_orders(proposal)
-        self.logger.debug(f"Filtered proposal: {proposal}")
-
-        self.cancel_orders_below_min_spread()
-        self.logger.info(f"final proposal: {proposal}")
-
-        self.execute_orders_proposal(proposal)
-
-        self.processing = False
 
 
     def cancel_order(self, mkt: str, order_id: str):
@@ -656,7 +665,7 @@ class PerpMarketMaker:
         else:
             _val = self.market_connector.orderbooks[self.market].get_mid()
 
-        return D(_val)
+        return D(_val) if _val is not None else None
 
 
     def get_external_connector_price(self, mkt, price_type: PriceType = None) -> D:
@@ -794,8 +803,6 @@ class PerpMarketMaker:
         else:
             final_bid = fair_bid
 
-
-
         if publish:
             self._publish_strat_metric('spot', raw_spot)
             self._publish_strat_metric('spot_ema', raw_spot_ema)
@@ -817,6 +824,7 @@ class PerpMarketMaker:
             self._publish_strat_metric('market_ask', market_ask)
             self._publish_strat_metric('ratio_quoted_market_bid', final_bid / market_bid - 1)
             self._publish_strat_metric('ratio_quoted_market_ask', final_ask / market_ask - 1)
+            self._publish_strat_metric('algo_pos_usd', cur_pos_usd)
     
         if side == Side.BUY:
             return final_bid
