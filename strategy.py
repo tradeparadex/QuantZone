@@ -317,6 +317,10 @@ class PerpMarketMaker:
         return self.market_connector.trading_rules[self.market].min_notional_size / self.get_price_by_type(PriceType.Mid)
 
     @property
+    def min_price_allowed(self) -> D:
+        return self.market_connector.trading_rules[self.market].min_price_increment
+
+    @property
     def order_amount(self) -> D:
         return self.order_amount_usd / self.get_price_by_type(PriceType.Mid)
 
@@ -383,6 +387,10 @@ class PerpMarketMaker:
         # filter if size is less than min_order_amount
         proposal.buys = [buy for buy in proposal.buys if buy.size > 0]
         proposal.sells = [sell for sell in proposal.sells if sell.size > 0]
+
+        # filter if price is less than min_price_allowed
+        proposal.buys = [buy for buy in proposal.buys if buy.price >= self.min_price_allowed]
+        proposal.sells = [sell for sell in proposal.sells if sell.price >= self.min_price_allowed]
     
     def outside_tolerance(self, current_prices: List[D], proposal_prices: List[D]) -> List[int]:
         

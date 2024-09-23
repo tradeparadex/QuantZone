@@ -2,6 +2,14 @@ import json
 import logging
 import os
 import socket
+from decimal import Decimal
+
+
+class DecimalEncoder(json.JSONEncoder):
+    def default(self, o):
+        if isinstance(o, Decimal):
+            return f"{o:.4f}"
+        return super().default(o)
 
 class MetricsMessage:
     def __init__(self, timestamp: int, process_name: str, tag_name: str, market: str, value: float, account: str = None):
@@ -23,7 +31,7 @@ class MetricsMessage:
         }
 
     def to_json(self):
-        return json.dumps(self.to_dict())
+        return json.dumps(self.to_dict(), cls=DecimalEncoder)
 
     def __str__(self):
         return self.to_json()
