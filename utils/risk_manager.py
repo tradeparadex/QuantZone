@@ -95,8 +95,12 @@ class RiskManager:
 
         oldest_book = np.min([ob.received_ts for ob in self.parent.market_connector.orderbooks.values()])/1e6
         last_account = self.parent.market_connector.account_info['updated_at']
-        oldest_external_book = np.min([ob.received_ts for ob in self.parent.external_connector.orderbooks.values()])/1e6
-                
+
+        if self.parent.external_connector:
+            oldest_external_book = np.min([ob.received_ts for ob in self.parent.external_connector.orderbooks.values()])/1e6
+        else:
+            oldest_external_book = now_ms
+
         if now_ms - oldest_external_book > self.parent.max_market_latency_ms:
             self.logger.info(f"External book too old: {now_ms - oldest_external_book}")
             return True
@@ -110,7 +114,10 @@ class RiskManager:
             return True
         
         market_latency = np.max([ob.received_ts-ob.exchange_ts for ob in self.parent.market_connector.orderbooks.values()])/1e6
-        external_latency = np.max([ob.received_ts-ob.exchange_ts for ob in self.parent.external_connector.orderbooks.values()])/1e6
+        if self.parent.external_connector:
+            external_latency = np.max([ob.received_ts-ob.exchange_ts for ob in self.parent.external_connector.orderbooks.values()])/1e6
+        else:
+            external_latency = 0
         
         if market_latency > self.parent.max_market_latency_ms:
             self.logger.info(f"Market latency too high: {market_latency}")

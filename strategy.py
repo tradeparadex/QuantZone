@@ -911,12 +911,13 @@ class PerpMarketMaker:
         self.start()
 
         await self.market_connector.initialize()
-        await self.external_connector.initialize()
 
         await self.market_connector.start()
         await self.market_connector.setup_trading_rules(self.market)
 
-        await self.external_connector.start()
+        if self.external_connector is not None:
+            await self.external_connector.initialize()
+            await self.external_connector.start()
 
         await self._subscribe_to_data()
         
