@@ -854,7 +854,12 @@ class PerpMarketMaker:
 
         raw_adj = self.price_adjustment
 
-        fair = raw_price.fair + raw_price.base * (pos_adj + vol_adj + raw_adj + self.ask_spread)
+        if price_type is None:
+            fair = raw_price.fair + raw_price.base * (pos_adj + raw_adj)
+        elif price_type == PriceType.BestAsk:
+            fair = raw_price.fair + raw_price.base * (pos_adj + vol_adj + raw_adj + self.ask_spread)
+        elif price_type == PriceType.BestBid:
+            fair = raw_price.fair + raw_price.base * (pos_adj - vol_adj + raw_adj + self.bid_spread)
 
         if price_type == PriceType.BestAsk:
             if not market_ask.is_finite():

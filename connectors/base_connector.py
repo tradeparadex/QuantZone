@@ -1,3 +1,4 @@
+# Importing specific connector classes from their respective modules
 from connectors.binance_spot import BinanceSpotConnector
 from connectors.paradex_perp import ParadexPerpConnector
 

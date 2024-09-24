@@ -1,3 +1,8 @@
+"""
+This module provides utility functions and classes for asynchronous programming.
+It includes safe wrappers for asynchronous tasks, error handling, and various helper functions.
+"""
+
 import asyncio
 import inspect
 import logging
