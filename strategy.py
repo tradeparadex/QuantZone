@@ -808,10 +808,6 @@ class PerpMarketMaker:
         vol_nonlinear = min(self.volatility_cap, np.power(vol_ratio, exponent))
         vol_adj = vol_nonlinear * self.pricing_volatility_factor / 2
 
-        self.logger.info(f"volatility: {volatility:.6f}, vol_adj: {vol_adj:.6f}, vol_nonlinear: {vol_nonlinear:.6f}, vol_cap: {self.volatility_cap:.6f}")
-        if volatility == 0:
-            self.logger.warning("Volatility is 0. Returning 0.")
-            
         return vol_adj
 
     def get_fair_price(self, side: Side = None) -> float:
