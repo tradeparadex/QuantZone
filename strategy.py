@@ -121,6 +121,8 @@ class PerpMarketMaker:
         self._next_order_timestamp = 0
         self._next_reeval_timestamp = 0
         self._last_system_health_ok = self.now_ms()
+
+        self.close_vol_factor = D(0.1)
         
         self.processing = False
 
@@ -476,14 +478,14 @@ class PerpMarketMaker:
             proposal_buys = [buy.price for buy in proposal.buys]
             proposal_sells = [sell.price for sell in proposal.sells]
 
-            self.logger.info(f"active_buy_prices: {active_buy_prices}")
-            self.logger.info(f"proposal_buys: {proposal_buys}")
+            self.logger.debug(f"active_buy_prices: {active_buy_prices}")
+            self.logger.debug(f"proposal_buys: {proposal_buys}")
             
             buys_to_cancel, buys_to_keep = self.outside_tolerance(active_buy_prices, proposal_buys)
             sells_to_cancel, sells_to_keep = self.outside_tolerance(active_sell_prices, proposal_sells)
 
-            self.logger.info(f"buys_to_cancel: {buys_to_cancel}")
-            self.logger.info(f"buys_to_keep: {buys_to_keep}")
+            self.logger.debug(f"buys_to_cancel: {buys_to_cancel}")
+            self.logger.debug(f"buys_to_keep: {buys_to_keep}")
 
         else:
             buys_to_cancel = range(len(_active_orders))
@@ -777,8 +779,20 @@ class PerpMarketMaker:
 
         cur_pos = self.get_active_position(self.market)
         cur_pos_account_usd = self.get_global_position_usd()
-        
+
         cur_pos_usd = cur_pos * raw_price.base
+
+        if side is None:
+            is_open = False
+        elif abs(cur_pos_usd) <= D(1.2) * self.order_amount_usd:
+            is_open = True
+        elif side == Side.BUY and cur_pos_usd > 0:
+            is_open = True
+        elif side == Side.SELL and cur_pos_usd < 0:
+            is_open = True
+        else:
+            is_open = False
+        
         self.logger.debug(f"cur_pos: {cur_pos:.4g}, cur_pos_usd: {cur_pos_usd:.4g}, cur_pos_account_usd: {cur_pos_account_usd:.4g}")
 
         pos_lean = -1 * self.pos_lean_bps_per_100k * cur_pos_usd 
@@ -789,6 +803,8 @@ class PerpMarketMaker:
         pos_adj = pos_lean + global_pos_lean
 
         vol_adj = self.get_vol_adjustment()
+
+        vol_adj = vol_adj if is_open else vol_adj * self.close_vol_factor
 
         market_bid = self.get_price_by_type(PriceType.BestBid)
         market_ask = self.get_price_by_type(PriceType.BestAsk)
