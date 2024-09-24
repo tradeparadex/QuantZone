@@ -94,7 +94,7 @@ class ParadexPerpConnector(ConnectorBase):
 
         self._order_counter = 0
 
-        self.rate_limiter = SyncRateLimiter(5) # X requests per second, adjust as needed
+        self.rate_limiter = SyncRateLimiter(3) # X requests per second, adjust as needed
 
     def rate_limited_request(self, method: Callable, *args, **kwargs) -> Any:
         """

@@ -426,16 +426,19 @@ class PerpMarketMaker:
         buys = []
         sells = []
 
+        fair_buy = self.get_fair_price(side=Side.BUY)
+        fair_sell = self.get_fair_price(side=Side.SELL)
+
         _num_ticks_increment = self.order_level_spread * market.trading_rules[self.market].min_price_increment
         _order_increment = self.order_level_amount_bps / D(10_000) * self.order_amount
         for level in range(0, self.buy_levels):
-            price = self.get_fair_price(side=Side.BUY) - ((np.exp(self.order_level_spread_lambda * level) - 1) * _num_ticks_increment)
+            price = fair_buy - ((np.exp(self.order_level_spread_lambda * level) - 1) * _num_ticks_increment)
             size = self.order_amount + (_order_increment * (np.exp(self.order_size_spread_lambda * level) - 1))
 
             if size > 0:
                 buys.append(PriceSize(price, size))                   
         for level in range(0, self.sell_levels):
-            price = self.get_fair_price(side=Side.SELL) + ((np.exp(self.order_level_spread_lambda * level) - 1) * _num_ticks_increment)
+            price = fair_sell + ((np.exp(self.order_level_spread_lambda * level) - 1) * _num_ticks_increment)
             size = self.order_amount + (_order_increment * (np.exp(self.order_size_spread_lambda * level) - 1))
 
             if size > 0:
@@ -731,9 +734,6 @@ class PerpMarketMaker:
                 self.cancel_order(self.market, order.client_order_id)
 
     def get_price_by_type(self, price_type: PriceType = None) -> D:
-        if price_type is None:
-            price_type = PriceType.Mid
-
         if price_type == PriceType.BestBid:
             _val = self.market_connector.orderbooks[self.market].get_best_bid()
         elif price_type == PriceType.BestAsk:
@@ -745,9 +745,6 @@ class PerpMarketMaker:
 
 
     def get_external_connector_price(self, mkt, price_type: PriceType = None) -> D:
-        if price_type is None:
-            price_type = PriceType.Mid
-
         if price_type == PriceType.BestBid:
             _val = self.external_connector.orderbooks[mkt].get_best_bid()
         elif price_type == PriceType.BestAsk:
@@ -755,7 +752,7 @@ class PerpMarketMaker:
         else:
             _val = self.external_connector.orderbooks[mkt].get_mid()
 
-        return D(_val)
+        return D(_val) if _val is not None else None
 
     def is_ready_to_trade(self) -> bool:
         if self.market not in self.market_connector.orderbooks:
@@ -812,6 +809,9 @@ class PerpMarketMaker:
         vol_adj = vol_nonlinear * self.pricing_volatility_factor / 2
 
         self.logger.info(f"volatility: {volatility:.6f}, vol_adj: {vol_adj:.6f}, vol_nonlinear: {vol_nonlinear:.6f}, vol_cap: {self.volatility_cap:.6f}")
+        if volatility == 0:
+            self.logger.warning("Volatility is 0. Returning 0.")
+            
         return vol_adj
 
     def get_fair_price(self, side: Side = None) -> float:

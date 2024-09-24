@@ -110,6 +110,7 @@ class RollingAnnualizedVolatility:
     def __init__(self, window_size: int):
         self.prices = deque(maxlen=window_size)
         self.timestamps = deque(maxlen=window_size)
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     def update(self, new_price: D, new_timestamp: float):
         """Update with a new price and its timestamp."""
@@ -137,9 +138,11 @@ class RollingAnnualizedVolatility:
 
         # Calculate sample variance of normalized log returns
         variance = np.var(normalized_log_returns, ddof=1)  # ddof=1 for sample variance
+        self.logger.info(f"variance: {variance}")
 
         # Calculate daily volatility
         normalized_volatility = np.sqrt(variance)
+        self.logger.info(f"normalized_volatility: {normalized_volatility}")
         
         # Annualize the volatility
         avg_interval_ms = np.mean(time_diffs)
