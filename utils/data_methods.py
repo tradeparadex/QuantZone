@@ -131,21 +131,28 @@ class RollingAnnualizedVolatility:
         timestamps_array = np.array(self.timestamps, dtype=np.float64)
         time_diffs = np.diff(timestamps_array)
 
+        # Create a mask for non-zero time differences
+        non_zero_mask = time_diffs != 0
+
+        # Filter log returns and time diffs to only include non-zero time diffs
+        filtered_log_returns = log_returns_array[non_zero_mask]
+        filtered_time_diffs = time_diffs[non_zero_mask]
+
+        # If all time diffs were zero, return 0 (or handle this case as appropriate)
+        if len(filtered_time_diffs) == 0:
+            return D(0)
+
         # Normalize log returns by the square root of the time differences
-        if np.any(time_diffs == 0):
-            return D(0)  # Avoid division by zero if time differences are zero
-        normalized_log_returns = log_returns_array / np.sqrt(time_diffs)
+        normalized_log_returns = filtered_log_returns / np.sqrt(filtered_time_diffs)
 
         # Calculate sample variance of normalized log returns
         variance = np.var(normalized_log_returns, ddof=1)  # ddof=1 for sample variance
-        self.logger.info(f"variance: {variance}")
 
         # Calculate daily volatility
         normalized_volatility = np.sqrt(variance)
-        self.logger.info(f"normalized_volatility: {normalized_volatility}")
         
         # Annualize the volatility
-        avg_interval_ms = np.mean(time_diffs)
+        avg_interval_ms = np.mean(filtered_time_diffs)
         ms_per_year = 365 * 24 * 60 * 60 * 1000  # milliseconds
         annualized_volatility = normalized_volatility * np.sqrt(ms_per_year / avg_interval_ms)
 
