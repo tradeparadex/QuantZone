@@ -14,6 +14,7 @@ import traceback
 import sys
 
 from strategy import PerpMarketMaker
+from pricer_perps import PerpPricer
 
 
 async def shutdown(signal, loop, my_process):
@@ -34,7 +35,7 @@ def handle_exception(loop, context):
 async def main():
 
     loop=asyncio.get_running_loop()
-    strategy = PerpMarketMaker(loop=loop)
+    strategy = PerpMarketMaker(loop=loop, PricerClass=PerpPricer)
 
     # Set up signal handlers
     signals = (signal.SIGHUP, signal.SIGTERM, signal.SIGINT)
