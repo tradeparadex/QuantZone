@@ -1,3 +1,23 @@
+"""
+This module implements a perpetual market making strategy.
+
+It provides classes and functions for pricing, order management, and risk control
+in perpetual futures markets.
+
+Classes:
+    RawFairPrice: Represents a fair price with base value.
+    BasePricer: Abstract base class for pricing logic.
+    PerpMarketMaker: Main class implementing the market making strategy.
+
+Imports:
+    Standard library imports for asynchronous operations, logging, and data handling.
+    Custom utility modules for connector management, async operations, and data structures.
+    Risk management and parameter handling utilities.
+
+Constants:
+    Various parameter names used in the strategy configuration.
+"""
+
 import asyncio
 import logging
 import os
@@ -6,6 +26,7 @@ from decimal import Decimal as D
 from typing import List, Optional
 import traceback
 import numpy as np
+
 from connectors.base_connector import _get_connector
 from utils.async_utils import safe_ensure_future
 from utils.data_methods import (
@@ -25,14 +46,32 @@ from utils.metrics_publisher import MetricsMessage, MetricsPublisher
 from utils.parameters_manager import Param, ParamsManager
 from utils.risk_manager import RiskManager
 
-
 class RawFairPrice:
+    """
+    Represents a raw fair price with base value.
+
+    This class encapsulates a fair price and its corresponding base value,
+    which are used in pricing calculations for the market making strategy.
+
+    Attributes:
+        fair (Decimal): The fair price value.
+        base (Decimal): The base value associated with the fair price.
+    """
     def __init__(self, fair: D, base: D):
         self.fair = fair
         self.base = base
 
 
 class BasePricer:
+    """
+    Abstract base class for pricing logic.
+
+    This class defines the interface for pricing logic, which must be implemented
+    by concrete subclasses.
+
+    Attributes:
+        strategy: The parent strategy instance.
+    """
     def __init__(self, strategy):
         self.strategy = strategy
 
@@ -44,6 +83,12 @@ class BasePricer:
 
 
 class PerpMarketMaker:
+    """
+    A class representing a perpetual market maker strategy.
+
+    This class implements a market making strategy for perpetual futures markets.
+    It manages order placement, pricing, risk management, and market data processing.
+    """
 
     PARAM_CLOSE_ONLY_MODE = "close_only_mode"
     PARAM_ENABLED = "enabled"
@@ -92,6 +137,7 @@ class PerpMarketMaker:
             mp: MetricsPublisher=MetricsPublisher,
             PricerClass: BasePricer=BasePricer
         ):
+        
         self.logger = logging.getLogger(self.__class__.__name__)
         self.loop = loop
 

@@ -13,7 +13,7 @@ import logging
 import os
 import time
 from decimal import Decimal as D
-from typing import Dict
+from typing import Dict, Callable, Any
 import hashlib
 from utils.data_methods import (
     Order,
@@ -26,7 +26,7 @@ from utils.data_methods import (
     Side,
     UpdateType
 )
-
+from utils.api_utils import SyncRateLimiter
 from marshmallow.exceptions import ValidationError
 from paradex_py import Paradex
 from paradex_py.api.ws_client import ParadexWebsocketChannel
@@ -94,6 +94,15 @@ class ParadexPerpConnector(ConnectorBase):
 
         self._order_counter = 0
 
+        self.rate_limiter = SyncRateLimiter(5) # X requests per second, adjust as needed
+
+    def rate_limited_request(self, method: Callable, *args, **kwargs) -> Any:
+        """
+        Rate-limit the request to the Paradex API.
+        """
+        self.rate_limiter.acquire()
+        return method(*args, **kwargs)
+
     def get_account_str(self):
         """Get the account address as a string."""
         return str(self.paradex.account.l2_address)
@@ -133,7 +142,7 @@ class ParadexPerpConnector(ConnectorBase):
             client_order_id (str): The client order ID to cancel.
         """
         try:
-            resp = self.paradex.api_client.cancel_order_by_client_id(client_order_id)
+            resp = self.rate_limited_request(self.paradex.api_client.cancel_order_by_client_id, client_order_id)
             self.active_orders[client_order_id].status = 'CANCELLING'
         except ValidationError as ve:
             if 'Missing data for required field' in str(ve):
@@ -156,7 +165,7 @@ class ParadexPerpConnector(ConnectorBase):
         """
         for ao in set(self.active_orders.keys()):
             try:
-                po = self.paradex.api_client.fetch_order_by_client_id(ao)
+                po = self.rate_limited_request(self.paradex.api_client.fetch_order_by_client_id, ao)
                 self.process_order_update(po)
             except ValidationError as ve:
                 if 'Missing data for required field' in str(ve):
@@ -172,7 +181,7 @@ class ParadexPerpConnector(ConnectorBase):
 
         existing_orders = []
         try:
-            p_orders = self.paradex.api_client.fetch_orders({'market': mkt})
+            p_orders = self.rate_limited_request(self.paradex.api_client.fetch_orders, {'market': mkt})
             existing_orders = p_orders['results']
         except Exception as e:
             self.logger.error(f"fetch orders failed: {e}")
@@ -250,7 +259,7 @@ class ParadexPerpConnector(ConnectorBase):
             trigger_price=None,
         )
         try:
-            resp = self.paradex.api_client.submit_order(_po)
+            resp = self.rate_limited_request(self.paradex.api_client.submit_order, _po)
         except Exception as e:
             self.logger.error(f"order failed: {e}")
             return
