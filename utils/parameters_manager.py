@@ -1,8 +1,11 @@
+"""
+This module provides utilities for managing parameters in a configuration file.
+
+It includes classes for defining parameters, parsing their values, and managing them.
+"""
 import logging
 import os
 from typing import Any, Dict, List, Optional
-
-
 
 class Param:
     def __init__(self, name: str, value: Any, val_type: Any = str) -> None:

@@ -1,6 +1,14 @@
+"""
+This module contains utility classes and methods for handling trading data.
+
+It includes various enums, data structures, and helper classes used throughout
+the trading system for representing orders, prices, and other trading-related concepts.
+"""
+
 import datetime as dt
 import logging
 import time
+import asyncio
 from abc import ABC, abstractmethod
 from collections import deque, namedtuple
 from decimal import Decimal as D
@@ -34,6 +42,9 @@ class PriceType(Enum):
 
 
 class PriceSize:
+    """
+    A class representing a price and size pair for trading orders.
+    """
     def __init__(self, price: D, size: D, type: OrderType = OrderType.LIMIT_MAKER):
         self.price: D = price
         self.size: D = size
@@ -44,6 +55,9 @@ class PriceSize:
 
 
 class Order:
+    """
+    A class representing an order in the trading system.
+    """
     def __init__(self, symbol: str, side: Side, price: D, amount: D, order_type: OrderType):
         self.symbol = symbol
         self.side = side
@@ -60,7 +74,10 @@ class Order:
 TradingRules = namedtuple('TradeTick', ['min_price_increment', 'min_notional_size', 'min_amount_increment'])
 
 class ConnectorBase(ABC):
-    def __init__(self, loop):
+    """
+    An abstract base class for connectors in the trading system.
+    """
+    def __init__(self, loop: asyncio.AbstractEventLoop):
         self.loop = loop
         self.logger = logging.getLogger(self.__class__.__name__)
         self.trading_rules: Dict[str, TradingRules] = {}
@@ -84,6 +101,9 @@ class ConnectorBase(ABC):
 
 
 class Proposal:
+    """
+    A class representing a proposal for buying or selling a financial instrument.
+    """
     def __init__(self, buys: List[PriceSize], sells: List[PriceSize]):
         self.buys: List[PriceSize] = buys
         self.sells: List[PriceSize] = sells
@@ -93,6 +113,9 @@ class Proposal:
                f"{len(self.sells)} sells: {', '.join([str(o) for o in self.sells])}"
 
 class Ticker:
+    """
+    A class representing a financial instrument with its symbol and exchange.
+    """
     def __init__(self, symbol: str, exchange: str):
         self.symbol = symbol
         self.exchange = exchange
@@ -107,10 +130,22 @@ class UpdateType(Enum):
     FUNDING = 4
 
 class RollingAnnualizedVolatility:
+    """
+    A class for calculating rolling annualized volatility.
+
+    This class maintains a fixed-size window of price data and their corresponding
+    timestamps. It provides methods to update the data and calculate the
+    annualized volatility based on the stored price history.
+
+    Attributes:
+        prices (deque): A fixed-size deque storing historical prices.
+        timestamps (deque): A fixed-size deque storing timestamps corresponding to the prices.
+        logger (Logger): A logger instance for this class.
+    """
     def __init__(self, window_size: int):
+        self.logger = logging.getLogger(self.__class__.__name__)
         self.prices = deque(maxlen=window_size)
         self.timestamps = deque(maxlen=window_size)
-        self.logger = logging.getLogger(self.__class__.__name__)
 
     def update(self, new_price: D, new_timestamp: float):
         """Update with a new price and its timestamp."""
@@ -160,6 +195,21 @@ class RollingAnnualizedVolatility:
 
 
 class ExponentialMovingAverage:
+    """
+    A class for calculating an exponential moving average (EMA).
+
+    This class maintains a single value and updates it using an exponential decay
+    based on a half-life specified in milliseconds. It provides methods to update
+    the EMA value and retrieve the current EMA value, applying decay based on the
+    current timestamp.
+
+    Attributes:
+        value (Decimal): The current EMA value.
+        timestamp (float): The timestamp when the EMA value was last updated.
+        half_life (Decimal): The half-life in milliseconds.
+        lambda_ (Decimal): The decay constant based on the half-life.
+        decay_on_read (bool): Whether to decay the EMA value on read.
+    """
     def __init__(self, half_life_ms: D, decay_on_read: bool = False, init_val: D=D(0)):
         self.value = init_val
         self.timestamp = .0
@@ -191,6 +241,9 @@ class ExponentialMovingAverage:
 
 
 class Level:
+    """
+    A class representing a price level in an order book.
+    """
     def __init__(self, px: float, qty: float, offset: int=0) -> None:
         self.px = float(px)
         self.qty = float(qty)
@@ -200,6 +253,9 @@ class Level:
         return f"{self.px}@{self.qty}"
 
 class Depth:
+    """
+    A class representing an order book depth.
+    """
     def __init__(self, iid: str) -> None:
         self.logger = logging.getLogger(self.__class__.__name__)
 
@@ -214,14 +270,16 @@ class Depth:
         self.last_ask_zero_offset = {}
 
 
-    def update_order_book(self, depth_diff, reset=False):
+    def update_order_book(self, depth_diff: Dict, reset: bool = False):
+        """Update the order book with a depth difference."""
         if reset:
             self.bids.clear()
             self.asks.clear()
         self.update_order_book_side(depth_diff['bids'], self.bids, self.last_bid_zero_offset, 'B')
         self.update_order_book_side(depth_diff['asks'], self.asks, self.last_ask_zero_offset, 'A')
 
-    def update_order_book_side(self, book_side, order_book, last_offsets, side):
+    def update_order_book_side(self, book_side: List[Dict], order_book: SortedDict, last_offsets: Dict, side: str):
+        """Update the order book side with a depth difference."""
         for level in book_side:
             price = D(level['price'])
             offset = int(level.get('offset', 0))
@@ -246,26 +304,33 @@ class Depth:
                         last_offsets[price] = offset
 
     def get_best_bid(self):
+        """Return the best bid price."""
         return self.bids.peekitem(index=-1)[1].px
     
     def get_best_ask(self):
+        """Return the best ask price."""
         return self.asks.peekitem(index=0)[1].px
 
     def get_mid(self):
+        """Return the mid price."""
         if len(self.bids) == 0 or len(self.asks) == 0:
             return None
         return (self.bids.peekitem(index=-1)[1].px + self.asks.peekitem(index=0)[1].px) / 2
     
     def get_spread(self):
+        """Return the spread."""
         return self.asks.peekitem(index=0)[1].px - self.bids.peekitem(index=-1)[1].px
     
     def is_stale(self, max_age_s: int = 10):
+        """Check if the order book is stale."""
         return (time.time_ns() - self.received_ts) > max_age_s * 1e9
     
     def is_crossed(self):
+        """Check if the order book is crossed."""
         return self.bids.peekitem(index=-1)[1].px > self.asks.peekitem(index=0)[1].px
     
     def uncross_book(self):
+        """Uncross the order book."""
         while self.is_crossed():
             best_bid = self.bids.peekitem(index=-1)[1]
             best_ask = self.asks.peekitem(index=0)[1]
@@ -273,7 +338,6 @@ class Depth:
                 self.asks.popitem(index=0)
             else:
                 self.bids.popitem(index=-1)
-
 
     def __str__(self):
         return f"Depth<{self.iid}@{dt.datetime.fromtimestamp(self.received_ts/1e9)}>(BID={self.bids.peekitem(index=-1)[1]};ASK={self.asks.peekitem(index=0)[1]})"

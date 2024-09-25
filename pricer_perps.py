@@ -40,7 +40,7 @@ class PerpPricer(BasePricer):
         Returns:
             RawFairPrice: The raw fair price for the given side.
         """
-        price_type = PriceType.BestBid if side == Side.Buy else PriceType.BestAsk
+        price_type = PriceType.BestBid if side == Side.BUY else PriceType.BestAsk
 
         raw_spot = self.strategy.get_base_price(price_type)
         raw_spot_ema = self.strategy._smoothen_spot_price.value
