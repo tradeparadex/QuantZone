@@ -2,4 +2,5 @@ marshmallow==3.22.0
 numpy==2.1.0
 paradex_py==0.4.2
 python-binance==1.0.19
+scipy==1.14.1
 sortedcontainers==2.4.0

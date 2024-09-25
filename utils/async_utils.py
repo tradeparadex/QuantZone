@@ -1,10 +1,15 @@
+"""
+This module provides utility functions and classes for asynchronous programming.
+It includes safe wrappers for asynchronous tasks, error handling, and various helper functions.
+"""
+
 import asyncio
 import inspect
 import logging
 import time
+from typing import Coroutine, Any, Callable
 
-
-async def safe_wrapper(c):
+async def safe_wrapper(c: Coroutine) -> Any:
     try:
         return await c
     except asyncio.CancelledError:
@@ -13,11 +18,11 @@ async def safe_wrapper(c):
         logging.getLogger(__name__).error(f"Unhandled error in background task: {str(e)}", exc_info=True)
 
 
-def safe_ensure_future(coro, *args, **kwargs):
+def safe_ensure_future(coro: Coroutine, *args, **kwargs) -> asyncio.Future:
     return asyncio.ensure_future(safe_wrapper(coro), *args, **kwargs)
 
 
-async def safe_gather(*args, **kwargs):
+async def safe_gather(*args: Coroutine, **kwargs: Any) -> Any:
     try:
         return await asyncio.gather(*args, **kwargs)
     except Exception as e:
@@ -25,7 +30,7 @@ async def safe_gather(*args, **kwargs):
         raise
 
 
-async def wait_til(condition_func, timeout=10):
+async def wait_til(condition_func: Callable[[], bool], timeout: float = 10) -> None:
     start_time = time.perf_counter()
     while True:
         if condition_func():
@@ -36,7 +41,7 @@ async def wait_til(condition_func, timeout=10):
             await asyncio.sleep(0.1)
 
 
-async def run_command(*args):
+async def run_command(*args: str) -> str:
     process = await asyncio.create_subprocess_exec(
         *args,
         stdout=asyncio.subprocess.PIPE)
@@ -44,9 +49,9 @@ async def run_command(*args):
     return stdout.decode().strip()
 
 
-def call_sync(coro,
+def call_sync(coro: Coroutine,
               loop: asyncio.AbstractEventLoop,
-              timeout: float = 30.0):
+              timeout: float = 30.0) -> Any:
     import threading
     if threading.current_thread() != threading.main_thread():  # pragma: no cover
         fut = asyncio.run_coroutine_threadsafe(

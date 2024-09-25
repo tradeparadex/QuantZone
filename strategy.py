@@ -1,11 +1,24 @@
+"""
+This module implements a perpetual market making strategy.
+
+It provides classes and functions for pricing, order management, and risk control
+in perpetual futures markets.
+
+Classes:
+    RawFairPrice: Represents a fair price with base value.
+    BasePricer: Abstract base class for pricing logic.
+    PerpMarketMaker: Main class implementing the market making strategy.
+"""
+
 import asyncio
 import logging
 import os
 import time
 from decimal import Decimal as D
-from typing import List
+from typing import List, Optional, Union, Tuple
 import traceback
 import numpy as np
+
 from connectors.base_connector import _get_connector
 from utils.async_utils import safe_ensure_future
 from utils.data_methods import (
@@ -25,8 +38,49 @@ from utils.metrics_publisher import MetricsMessage, MetricsPublisher
 from utils.parameters_manager import Param, ParamsManager
 from utils.risk_manager import RiskManager
 
+class RawFairPrice:
+    """
+    Represents a raw fair price with base value.
+
+    This class encapsulates a fair price and its corresponding base value,
+    which are used in pricing calculations for the market making strategy.
+
+    Attributes:
+        fair (Decimal): The fair price value.
+        base (Decimal): The base value associated with the fair price.
+    """
+    def __init__(self, fair: D, base: D):
+        self.fair = fair
+        self.base = base
+
+
+class BasePricer:
+    """
+    Abstract base class for pricing logic.
+
+    This class defines the interface for pricing logic, which must be implemented
+    by concrete subclasses.
+
+    Attributes:
+        strategy: The parent strategy instance.
+    """
+    def __init__(self, strategy):
+        self.strategy = strategy
+
+    def get_raw_fair_price(self, side: Side) -> RawFairPrice:
+        raise NotImplementedError("Subclasses must implement get_base_price")
+    
+    def publish_metrics(self):
+        raise NotImplementedError("Subclasses must implement publish_metrics")
+
 
 class PerpMarketMaker:
+    """
+    A class representing a perpetual market maker strategy.
+
+    This class implements a market making strategy for perpetual futures markets.
+    It manages order placement, pricing, risk management, and market data processing.
+    """
 
     PARAM_CLOSE_ONLY_MODE = "close_only_mode"
     PARAM_ENABLED = "enabled"
@@ -72,12 +126,16 @@ class PerpMarketMaker:
     def __init__(self, loop: asyncio.AbstractEventLoop, 
             rm: RiskManager=RiskManager, 
             pm: ParamsManager=ParamsManager, 
-            mp: MetricsPublisher=MetricsPublisher
+            mp: MetricsPublisher=MetricsPublisher,
+            PricerClass: BasePricer=BasePricer
         ):
+        
         self.logger = logging.getLogger(self.__class__.__name__)
         self.loop = loop
 
         self.market_connector = _get_connector('paradex_perp', loop=self.loop)
+
+        self.pricer = PricerClass(self)
 
         self.algo_name = "PARABOT_MM"
         self.market: str = os.getenv("ALGO_PARAMS_MARKET")
@@ -101,6 +159,8 @@ class PerpMarketMaker:
         self._next_order_timestamp = 0
         self._next_reeval_timestamp = 0
         self._last_system_health_ok = self.now_ms()
+
+        self.close_vol_factor = D(0.1)
         
         self.processing = False
 
@@ -177,7 +237,7 @@ class PerpMarketMaker:
     @property
     def volatility_cap(self) -> D:
         return self._params_manager.get_param_value(self.PARAM_VOLATILITY_CAP)
-    
+
     @property
     def volatility_exponent(self) -> D:
         return self._params_manager.get_param_value(self.PARAM_VOLATILITY_EXPONENT)
@@ -317,17 +377,30 @@ class PerpMarketMaker:
         return self.market_connector.trading_rules[self.market].min_notional_size / self.get_price_by_type(PriceType.Mid)
 
     @property
+    def min_price_allowed(self) -> D:
+        return self.market_connector.trading_rules[self.market].min_price_increment
+
+    @property
     def order_amount(self) -> D:
         return self.order_amount_usd / self.get_price_by_type(PriceType.Mid)
 
 
     def now_ns(self) -> int:
+        """
+        Return the current time in nanoseconds.
+        """
         return int(time.time_ns())
 
     def now_ms(self) -> int:
+        """
+        Return the current time in milliseconds.
+        """
         return int(self.now_ns() / 1e6)
 
-    def _publish_strat_metric(self, tag, val):
+    def _publish_strat_metric(self, tag: str, val: Union[D, float]) -> None:
+        """
+        Publish a metric to the metrics publisher.
+        """
         msg = MetricsMessage(
             timestamp=int(time.time() * 1000),
             process_name=self.algo_name,
@@ -349,21 +422,27 @@ class PerpMarketMaker:
 
         self._metrics_pub.stream_metrics(msg)
 
-    def create_base_proposal(self):
+    def create_base_proposal(self) -> Proposal:
+        """
+        Create a base proposal for the market making strategy.
+        """
         market: ConnectorBase = self.market_connector
         buys = []
         sells = []
 
+        fair_buy = self.get_fair_price(side=Side.BUY)
+        fair_sell = self.get_fair_price(side=Side.SELL)
+
         _num_ticks_increment = self.order_level_spread * market.trading_rules[self.market].min_price_increment
         _order_increment = self.order_level_amount_bps / D(10_000) * self.order_amount
         for level in range(0, self.buy_levels):
-            price = self.get_fair_price(side=Side.BUY) - ((np.exp(self.order_level_spread_lambda * level) - 1) * _num_ticks_increment)
+            price = fair_buy - ((np.exp(self.order_level_spread_lambda * level) - 1) * _num_ticks_increment)
             size = self.order_amount + (_order_increment * (np.exp(self.order_size_spread_lambda * level) - 1))
 
             if size > 0:
                 buys.append(PriceSize(price, size))                   
         for level in range(0, self.sell_levels):
-            price = self.get_fair_price(side=Side.SELL) + ((np.exp(self.order_level_spread_lambda * level) - 1) * _num_ticks_increment)
+            price = fair_sell + ((np.exp(self.order_level_spread_lambda * level) - 1) * _num_ticks_increment)
             size = self.order_amount + (_order_increment * (np.exp(self.order_size_spread_lambda * level) - 1))
 
             if size > 0:
@@ -371,7 +450,10 @@ class PerpMarketMaker:
 
         return Proposal(buys, sells)
 
-    def quantize_values(self, proposal: Proposal):
+    def quantize_values(self, proposal: Proposal) -> None:
+        """
+        Quantize the prices and sizes of the orders in the proposal.
+        """
         market: ConnectorBase = self.market_connector
         for buy in proposal.buys:
             buy.price = market.quantize_order_price(self.market, buy.price)
@@ -383,9 +465,15 @@ class PerpMarketMaker:
         # filter if size is less than min_order_amount
         proposal.buys = [buy for buy in proposal.buys if buy.size > 0]
         proposal.sells = [sell for sell in proposal.sells if sell.size > 0]
+
+        # filter if price is less than min_price_allowed
+        proposal.buys = [buy for buy in proposal.buys if buy.price >= self.min_price_allowed]
+        proposal.sells = [sell for sell in proposal.sells if sell.price >= self.min_price_allowed]
     
-    def outside_tolerance(self, current_prices: List[D], proposal_prices: List[D]) -> List[int]:
-        
+    def outside_tolerance(self, current_prices: List[D], proposal_prices: List[D]) -> Tuple[List[int], List[int]]:
+        """
+        Check which orders are outside the tolerance and which are within the tolerance.
+        """
         within_tolerance = []
         deviated = []
 
@@ -403,7 +491,10 @@ class PerpMarketMaker:
 
         return deviated, within_tolerance
 
-    def cancel_orders_below_min_spread(self):
+    def cancel_orders_below_min_spread(self) -> None:
+        """
+        Cancel orders below the minimum spread.
+        """
         if self.minimum_spread <= 0:
             return
 
@@ -420,8 +511,10 @@ class PerpMarketMaker:
                 self.cancel_order(self.market, order.client_order_id)
                 self.logger.info(f"Canceling order {order.client_order_id} below min spread.")
     
-    def cancel_active_orders(self, proposal: Proposal):
-
+    def cancel_active_orders(self, proposal: Proposal) -> None:
+        """
+        Cancel orders outside the tolerance.
+        """
         _active_orders = [o for o in self.active_orders if o.status not in ['CANCELLING']]
         if len(_active_orders) == 0:
             return
@@ -448,14 +541,14 @@ class PerpMarketMaker:
             proposal_buys = [buy.price for buy in proposal.buys]
             proposal_sells = [sell.price for sell in proposal.sells]
 
-            self.logger.info(f"active_buy_prices: {active_buy_prices}")
-            self.logger.info(f"proposal_buys: {proposal_buys}")
+            self.logger.debug(f"active_buy_prices: {active_buy_prices}")
+            self.logger.debug(f"proposal_buys: {proposal_buys}")
             
             buys_to_cancel, buys_to_keep = self.outside_tolerance(active_buy_prices, proposal_buys)
             sells_to_cancel, sells_to_keep = self.outside_tolerance(active_sell_prices, proposal_sells)
 
-            self.logger.info(f"buys_to_cancel: {buys_to_cancel}")
-            self.logger.info(f"buys_to_keep: {buys_to_keep}")
+            self.logger.debug(f"buys_to_cancel: {buys_to_cancel}")
+            self.logger.debug(f"buys_to_keep: {buys_to_keep}")
 
         else:
             buys_to_cancel = range(len(_active_orders))
@@ -477,7 +570,10 @@ class PerpMarketMaker:
                                f"and current order prices is within "
                                f"{self.order_refresh_tolerance:.2%} order_refresh_tolerance_pct")
 
-    async def apply_budget_constraint(self, proposal: Proposal):
+    async def apply_budget_constraint(self, proposal: Proposal) -> None:
+        """
+        Apply the budget constraint to the proposal.
+        """
         if await self.is_close_only_mode:
             tot_pos_usd = self.get_active_position(self.market)
             if tot_pos_usd >= 0:
@@ -488,16 +584,19 @@ class PerpMarketMaker:
                 proposal.buys = []
                 proposal.sells = []
 
-    def filter_out_takers(self, proposal: Proposal):
+    def filter_out_takers(self, proposal: Proposal) -> None:
+        """
+        Filter out takers, unless within the taker threshold.
+        """
         market: ConnectorBase = self.market_connector
 
         top_ask =self.get_price_by_type(PriceType.BestAsk)
         if not top_ask.is_finite():
-            top_ask = self.get_fair_price(side=Side.SELL) * (1 + self.empty_book_penalty)
+            top_ask = self.get_fair_price(side=Side.SELL)
         
         top_bid = self.get_price_by_type(PriceType.BestBid)
         if not top_bid.is_finite():
-            top_bid = self.get_fair_price(side=Side.BUY) * (1 - self.empty_book_penalty)
+            top_bid = self.get_fair_price(side=Side.BUY)
 
         price_tick = market.trading_rules[self.market].min_price_increment
 
@@ -523,16 +622,25 @@ class PerpMarketMaker:
                 elif sell.price <= top_bid:
                     proposal.sells[idx].price = top_ask + ((np.exp(self.order_level_spread_lambda * idx) - 1) * price_tick)
 
-    def apply_order_levels_modifiers(self, proposal: Proposal):
+    def apply_order_levels_modifiers(self, proposal: Proposal) -> None:
+        """
+        Apply the order levels modifiers to the proposal.
+        """
         self.apply_price_band(proposal)
 
-    def apply_price_band(self, proposal: Proposal):
+    def apply_price_band(self, proposal: Proposal) -> None:
+        """
+        Apply the price band to the proposal.
+        """
         if self.price_ceiling > 0 and self.get_price_by_type(PriceType.BestAsk) >= self.price_ceiling:
             proposal.buys = []
         if self.price_floor > 0 and self.get_price_by_type(PriceType.BestBid) <= self.price_floor:
             proposal.sells = []
 
-    def execute_orders_proposal(self, proposal: Proposal):
+    def execute_orders_proposal(self, proposal: Proposal) -> None:
+        """
+        Execute the orders proposal.
+        """
         if self.now_ms() < self._next_order_timestamp:
             return
         else:
@@ -553,6 +661,9 @@ class PerpMarketMaker:
         self._publish_strat_metric("order_insert", len(all_orders))
 
     def market_data_ready(self) -> bool:
+        """
+        Check if the market data is ready.
+        """
         if self.market not in self.market_connector.orderbooks:
             self.logger.warning(f"Market data not ready for {self.market}.")
             return False
@@ -576,7 +687,10 @@ class PerpMarketMaker:
         return True
 
 
-    async def reeval(self, trigger: TriggerType):
+    async def reeval(self, trigger: TriggerType) -> None:
+        """
+        Reevaluate the strategy.
+        """
         if self.processing:
             self.logger.warning("Already processing. Skipping reeval.")
             return
@@ -644,10 +758,16 @@ class PerpMarketMaker:
             self.processing = False
 
 
-    def cancel_order(self, mkt: str, order_id: str):
+    def cancel_order(self, mkt: str, order_id: str) -> None:
+        """
+        Cancel an order by its client order ID.
+        """
         self.market_connector.cancel_order(order_id)
 
-    def cancel_all_orders(self):
+    def cancel_all_orders(self) -> None:
+        """
+        Cancel all active orders.
+        """
         if self.bulk_requests:
             self.market_connector.bulk_cancel_orders([o.client_order_id for o in self.active_orders if o.status not in ['CANCELLING']])
         else:
@@ -655,9 +775,9 @@ class PerpMarketMaker:
                 self.cancel_order(self.market, order.client_order_id)
 
     def get_price_by_type(self, price_type: PriceType = None) -> D:
-        if price_type is None:
-            price_type = PriceType.Mid
-
+        """
+        Get the price by type.
+        """
         if price_type == PriceType.BestBid:
             _val = self.market_connector.orderbooks[self.market].get_best_bid()
         elif price_type == PriceType.BestAsk:
@@ -669,9 +789,9 @@ class PerpMarketMaker:
 
 
     def get_external_connector_price(self, mkt, price_type: PriceType = None) -> D:
-        if price_type is None:
-            price_type = PriceType.Mid
-
+        """
+        Get the price by type from the external connector.
+        """
         if price_type == PriceType.BestBid:
             _val = self.external_connector.orderbooks[mkt].get_best_bid()
         elif price_type == PriceType.BestAsk:
@@ -679,9 +799,12 @@ class PerpMarketMaker:
         else:
             _val = self.external_connector.orderbooks[mkt].get_mid()
 
-        return D(_val)
+        return D(_val) if _val is not None else None
 
     def is_ready_to_trade(self) -> bool:
+        """
+        Check if the strategy is ready to trade.
+        """
         if self.market not in self.market_connector.orderbooks:
             return False
 
@@ -694,18 +817,24 @@ class PerpMarketMaker:
         return True
     
     def get_active_position(self, mkt: str) -> D:
+        """
+        Get the active position in the market.
+        """
         pos_obj = self.market_connector.positions.get(mkt)
         if pos_obj is None:
             return D(0)
         return D(pos_obj['size'])
     
     def get_global_position_usd(self) -> D:
+        """
+        Get the account position for all markets in USD.
+        """
         return D(np.sum(
             [np.sum([D(p['cost_usd']), D(p['unrealized_pnl']), D(p['unrealized_funding_pnl'])]) 
              for p in self.market_connector.positions.values()
             ]))
 
-    def update_emas(self, timestamp: float):
+    def update_emas(self, timestamp: float) -> None:
         inst_rate = self.get_inst_rate()
         inst_basis = self.get_inst_basis()
 
@@ -717,14 +846,14 @@ class PerpMarketMaker:
         self._smoothen_spot_price.update(_price, timestamp)
         self._rolling_vol.update(_price, timestamp)
 
-    def get_base_price(self, price_type) -> float:
+    def get_base_price(self, price_type: PriceType) -> float:
         if self.external_connector is None:
             raw_spot = self.get_price_by_type(price_type)
         else:
             raw_spot = self.get_external_connector_price(self.external_market_symbol, price_type)
         return raw_spot
 
-    def get_vol_adjustment(self, publish=False) -> float:
+    def get_vol_adjustment(self) -> float:
         volatility = self._rolling_vol.get_value()
         
         # Calculate the ratio of current volatility to base volatility
@@ -735,43 +864,30 @@ class PerpMarketMaker:
         vol_nonlinear = min(self.volatility_cap, np.power(vol_ratio, exponent))
         vol_adj = vol_nonlinear * self.pricing_volatility_factor / 2
 
-        if publish:
-            self._publish_strat_metric('volatility', volatility)
-            self._publish_strat_metric('volatility_nonlinear', vol_nonlinear)
-
         return vol_adj
 
-    def get_fair_price(self, side: Side = None, publish: bool = False) -> float:
+    def get_fair_price(self, side: Side = None) -> float:
+        """
+        Get the fair price. The quoting strategy will be based on the returned value.
+        """
+        raw_price = self.pricer.get_raw_fair_price(side)
 
-        price_type = None
-        if side == Side.BUY:
-            price_type = PriceType.BestBid
-        elif side == Side.SELL:
-            price_type = PriceType.BestAsk
-        
-        raw_spot = self.get_base_price(price_type)
-        raw_spot_ema = self._smoothen_spot_price.value
-        self.logger.debug(f"raw_spot: {raw_spot:.6f}, raw_spot_ema: {raw_spot_ema:.6f}")
-
-        raw_basis_ema = self._smoothen_basis.value
-        raw_fr = self.get_inst_rate()
-        raw_fr_ema = self._smoothen_funding_rate.value
-
-        self.logger.debug(f"raw_basis: {raw_basis_ema:.6f}, raw_fr_ema: {raw_fr_ema:.6f}")
-        _base_price = raw_spot_ema
-        factored_basis = raw_basis_ema * self.pricing_basis_factor
-
-        base_ask = max(raw_spot, raw_spot_ema)
-        base_bid = min(raw_spot, raw_spot_ema)
-        self.logger.debug(f"factored_basis: {factored_basis:.6f}")
-
-        factored_fr = raw_fr_ema * self.pricing_funding_rate_factor
-        self.logger.debug(f"factored_fr: {factored_fr:.6f}")
-    
         cur_pos = self.get_active_position(self.market)
         cur_pos_account_usd = self.get_global_position_usd()
+
+        cur_pos_usd = cur_pos * raw_price.base
+
+        if side is None:
+            is_open = False
+        elif abs(cur_pos_usd) < D(2) * self.order_amount_usd:
+            is_open = True
+        elif side == Side.BUY and cur_pos_usd > 0:
+            is_open = True
+        elif side == Side.SELL and cur_pos_usd < 0:
+            is_open = True
+        else:
+            is_open = False
         
-        cur_pos_usd = cur_pos * raw_spot
         self.logger.debug(f"cur_pos: {cur_pos:.4g}, cur_pos_usd: {cur_pos_usd:.4g}, cur_pos_account_usd: {cur_pos_account_usd:.4g}")
 
         pos_lean = -1 * self.pos_lean_bps_per_100k * cur_pos_usd 
@@ -781,59 +897,67 @@ class PerpMarketMaker:
 
         pos_adj = pos_lean + global_pos_lean
 
-        vol_adj = self.get_vol_adjustment(publish=publish)
+        vol_adj = self.get_vol_adjustment()
+
+        vol_adj = vol_adj if is_open else vol_adj * self.close_vol_factor
 
         market_bid = self.get_price_by_type(PriceType.BestBid)
         market_ask = self.get_price_by_type(PriceType.BestAsk)
 
         raw_adj = self.price_adjustment
 
-        fair_ask = base_ask + _base_price * (factored_basis - factored_fr + pos_adj + vol_adj + raw_adj + self.ask_spread)
-        fair_bid = base_bid + _base_price * (factored_basis - factored_fr + pos_adj - vol_adj + raw_adj - self.bid_spread)
-
-        if not market_ask.is_finite():
-            self.logger.warning("Market ask is not finite. Widen more.")
-            final_ask = fair_ask + _base_price * self.empty_book_penalty
-        else: 
-            final_ask = fair_ask
-
-        if not market_bid.is_finite():
-            self.logger.warning("Market bid is not finite. Widen more.")
-            final_bid = fair_bid - _base_price * self.empty_book_penalty
-        else:
-            final_bid = fair_bid
-
-        if publish:
-            self._publish_strat_metric('spot', raw_spot)
-            self._publish_strat_metric('spot_ema', raw_spot_ema)
-            self._publish_strat_metric('basis_ema', raw_basis_ema)
-            self._publish_strat_metric('fr_ema', raw_fr_ema)
-            self._publish_strat_metric('fr', raw_fr)
-            self._publish_strat_metric('volatility_adj', vol_adj)
-            self._publish_strat_metric('price_adjustment', raw_adj)
-            self._publish_strat_metric('spread_adj', self.ask_spread + self.bid_spread)
-            self._publish_strat_metric('basis_adj', factored_basis)
-            self._publish_strat_metric('fr_adj', -factored_fr)
-            self._publish_strat_metric('pos_adj_loc', pos_lean)
-            self._publish_strat_metric('pos_adj_global', global_pos_lean)
-            self._publish_strat_metric('quote_spread', final_ask - final_bid)
-            self._publish_strat_metric('market_spread', market_ask - market_bid)
-            self._publish_strat_metric('final_ask', final_ask)
-            self._publish_strat_metric('final_bid', final_bid)
-            self._publish_strat_metric('market_bid', market_bid)
-            self._publish_strat_metric('market_ask', market_ask)
-            self._publish_strat_metric('ratio_quoted_market_bid', final_bid / market_bid - 1)
-            self._publish_strat_metric('ratio_quoted_market_ask', final_ask / market_ask - 1)
-            self._publish_strat_metric('algo_pos_usd', cur_pos_usd)
-    
-        if side == Side.BUY:
-            return final_bid
+        # Apply the position and volatility adjustments.
+        if side is None:
+            fair = raw_price.fair + raw_price.base * (pos_adj + raw_adj)
         elif side == Side.SELL:
-            return final_ask
+            fair = raw_price.fair + raw_price.base * (pos_adj + vol_adj + raw_adj + self.ask_spread)
+        elif side == Side.BUY:
+            fair = raw_price.fair + raw_price.base * (pos_adj - vol_adj + raw_adj - self.bid_spread)
 
-        return (final_bid + final_ask) / D(2)
+        # If the market is not finite, widen more.
+        if side == Side.SELL:
+            if not market_ask.is_finite():
+                self.logger.warning("Market ask is not finite. Widen more.")
+                final_fair = fair + raw_price.base * self.empty_book_penalty
+            else: 
+                final_fair = fair
 
-    def start(self):
+        if side == Side.BUY:
+            if not market_bid.is_finite():
+                self.logger.warning("Market bid is not finite. Widen more.")
+                final_fair = fair - raw_price.base * self.empty_book_penalty
+            else:
+                final_fair = fair
+    
+        return final_fair
+    
+    def publish_metrics(self) -> None:
+
+        final_ask = self.get_fair_price(Side.SELL)
+        final_bid = self.get_fair_price(Side.BUY)
+
+        market_ask = self.get_price_by_type(PriceType.BestAsk)
+        market_bid = self.get_price_by_type(PriceType.BestBid)
+        market_mid = self.get_price_by_type(PriceType.Mid)
+
+        cur_pos_usd = self.get_active_position(self.market) * market_mid
+        cur_pos_account_usd = self.get_global_position_usd()
+
+        self._publish_strat_metric('algo_pos_usd', cur_pos_usd)
+        self._publish_strat_metric('pos_adj_loc', -1 * self.pos_lean_bps_per_100k * cur_pos_usd)
+        self._publish_strat_metric('pos_adj_global', -1 * self.pos_global_lean_bps_per_100k * cur_pos_account_usd)
+        self._publish_strat_metric('quote_spread', final_ask - final_bid)
+        self._publish_strat_metric('market_spread', market_ask - market_bid)
+        self._publish_strat_metric('final_ask', final_ask)
+        self._publish_strat_metric('final_bid', final_bid)
+        self._publish_strat_metric('market_bid', market_bid)
+        self._publish_strat_metric('market_ask', market_ask)
+        self._publish_strat_metric('ratio_quoted_market_bid', final_bid / market_bid - 1)
+        self._publish_strat_metric('ratio_quoted_market_ask', final_ask / market_ask - 1)
+        self._publish_strat_metric('volatility', self._rolling_vol.get_value())
+
+
+    def start(self) -> None:
         self.logger.info("Starting...")
         self._params_manager.start()
 
@@ -851,7 +975,7 @@ class PerpMarketMaker:
 
         self.logger.info("Started.")
 
-    def stop(self):
+    def stop(self) -> None:
         self.logger.info("Stopping...")
         self._params_manager.publish(Param("algo_down", 1))
 
@@ -861,7 +985,7 @@ class PerpMarketMaker:
         self._params_manager.stop()
 
 
-    def graceful_shutdown(self, signum, frame):
+    def graceful_shutdown(self, *args, **kwargs) -> None:
         self.stop()
         self.logger.info("Shutting down...")
 
@@ -886,7 +1010,7 @@ class PerpMarketMaker:
         return basis
 
 
-    async def on_market_data(self, update_type: str, ticker: Ticker, data: dict):
+    async def on_market_data(self, update_type: str, ticker: Ticker, data: dict) -> None:
         if not self.is_ready_to_trade():
             self.cancel_all_orders()
             return
@@ -896,17 +1020,17 @@ class PerpMarketMaker:
         if self._reeval_task is None or self._reeval_task.done():
             self._reeval_task = safe_ensure_future(self.reeval(TriggerType.MARKET_DATA))
 
-    async def on_trade(self, data: dict):
+    async def on_trade(self, data: dict) -> None:
         self.logger.info(f"on_trade: {data}")
 
-    async def _subscribe_to_data(self):
+    async def _subscribe_to_data(self) -> None:
         await self.market_connector.subscribe_to_data_channels(self.market, self.on_market_data)
         await self.market_connector.subscribe_to_trade_channels(self.market, self.on_trade)
         
         if self.external_connector is not None:
             await self.external_connector.subscribe_to_data_channels(self.external_markets.split(':')[-1], self.on_market_data)
 
-    async def run(self):
+    async def run(self) -> None:
 
         self.start()
 
@@ -926,7 +1050,8 @@ class PerpMarketMaker:
             self.logger.info("Cycle evaluation...")
 
             if self.market_data_ready():
-                self.get_fair_price(publish=True)
+                self.pricer.publish_metrics()
+                self.publish_metrics()
             
             self.market_connector.sync_open_orders(self.market)
             await self.reeval(TriggerType.PERIODIC)
