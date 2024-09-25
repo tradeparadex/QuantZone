@@ -1,3 +1,14 @@
+"""
+Main entry point for the market making strategy.
+
+This module sets up logging, imports necessary dependencies,
+and initializes the perpetual futures market making strategy.
+It also handles graceful shutdown and exception handling.
+
+This is the place where you can define the overrides for the strategy; 
+pricer and the risk modules.
+"""
+
 import asyncio
 import logging
 import os
@@ -17,7 +28,10 @@ from strategy import PerpMarketMaker
 from pricer_perps import PerpPricer
 
 
-async def shutdown(signal, loop, my_process):
+async def shutdown(signal: signal.Signals, loop: asyncio.AbstractEventLoop, my_process: PerpMarketMaker) -> None:
+    """
+    Shutdown the strategy gracefully.
+    """
     my_process.logger.info(f"Received exit signal {signal.name}...")
     my_process.graceful_shutdown()
     tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
@@ -26,8 +40,10 @@ async def shutdown(signal, loop, my_process):
     await asyncio.gather(*tasks, return_exceptions=True)
     loop.stop()
 
-def handle_exception(loop, context):
-    # This function will be called for exceptions that are not handled in tasks
+def handle_exception(loop: asyncio.AbstractEventLoop, context: dict) -> None:
+    """
+    Handle exceptions that are not handled in tasks.
+    """
     msg = context.get("exception", context["message"])
     logging.error(f"Caught exception: {msg}")
 
