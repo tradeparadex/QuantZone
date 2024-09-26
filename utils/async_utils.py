@@ -5,7 +5,7 @@ It includes safe wrappers for asynchronous tasks, error handling, and various he
 
 import asyncio
 import inspect
-import logging
+import structlog
 import time
 from typing import Coroutine, Any, Callable
 
@@ -15,7 +15,7 @@ async def safe_wrapper(c: Coroutine) -> Any:
     except asyncio.CancelledError:
         raise
     except Exception as e:
-        logging.getLogger(__name__).error(f"Unhandled error in background task: {str(e)}", exc_info=True)
+        structlog.get_logger(__name__).error(f"Unhandled error in background task: {str(e)}", exc_info=True)
 
 
 def safe_ensure_future(coro: Coroutine, *args, **kwargs) -> asyncio.Future:
@@ -26,7 +26,7 @@ async def safe_gather(*args: Coroutine, **kwargs: Any) -> Any:
     try:
         return await asyncio.gather(*args, **kwargs)
     except Exception as e:
-        logging.getLogger(__name__).debug(f"Unhandled error in background task: {str(e)}", exc_info=True)
+        structlog.get_logger(__name__).debug(f"Unhandled error in background task: {str(e)}", exc_info=True)
         raise
 
 
@@ -63,7 +63,7 @@ def call_sync(coro: Coroutine,
         try:
             loop = asyncio.get_event_loop()
         except RuntimeError:
-            logging.getLogger(__name__).debug(
+            structlog.get_logger(__name__).debug(
                 "Runtime error in call_sync - Using new event loop to exec coro",
                 exc_info=True
             )

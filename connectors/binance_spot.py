@@ -9,17 +9,9 @@ Classes:
 """
 
 import asyncio
-import logging
-import os
+import structlog
 import time
-import datetime as dt
-import numpy as np
-
-from enum import Enum
 from typing import Dict
-from decimal import Decimal as D
-from collections import defaultdict
-
 from binance import AsyncClient, BinanceSocketManager
 
 from utils.data_methods import (
@@ -57,7 +49,7 @@ class BinanceSpotConnector:
         Args:
             loop (asyncio.AbstractEventLoop): Event loop for asynchronous operations.
         """
-        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger = structlog.get_logger(self.__class__.__name__)
         self.loop = loop
         self.exchange = "binance_perp"
         self.binance: AsyncClient = None

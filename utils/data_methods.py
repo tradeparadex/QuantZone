@@ -6,7 +6,7 @@ the trading system for representing orders, prices, and other trading-related co
 """
 
 import datetime as dt
-import logging
+import structlog
 import time
 import asyncio
 from abc import ABC, abstractmethod
@@ -79,7 +79,7 @@ class ConnectorBase(ABC):
     """
     def __init__(self, loop: asyncio.AbstractEventLoop):
         self.loop = loop
-        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger = structlog.get_logger(self.__class__.__name__)
         self.trading_rules: Dict[str, TradingRules] = {}
         self.orderbooks: Dict[str, Depth] = {}
         self.bbos = {}
@@ -143,7 +143,7 @@ class RollingAnnualizedVolatility:
         logger (Logger): A logger instance for this class.
     """
     def __init__(self, window_size: int):
-        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger = structlog.get_logger(self.__class__.__name__)
         self.prices = deque(maxlen=window_size)
         self.timestamps = deque(maxlen=window_size)
 
@@ -257,7 +257,7 @@ class Depth:
     A class representing an order book depth.
     """
     def __init__(self, iid: str) -> None:
-        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger = structlog.get_logger(self.__class__.__name__)
 
         self.bids = SortedDict()
         self.asks = SortedDict()

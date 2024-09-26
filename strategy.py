@@ -11,7 +11,7 @@ Classes:
 """
 
 import asyncio
-import logging
+import structlog
 import os
 import time
 from decimal import Decimal as D
@@ -132,7 +132,7 @@ class PerpMarketMaker:
             config_path: str=None
         ):
         
-        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger = structlog.get_logger(self.__class__.__name__)
         self.loop = loop
 
         if config_path is not None:
@@ -849,6 +849,9 @@ class PerpMarketMaker:
         self._smoothen_basis.update(inst_basis, timestamp)
 
         _price = self.get_base_price(PriceType.Mid)
+        if _price is None:
+            self.logger.warning("Price is None. Skipping EMA update.")
+            return
 
         self._smoothen_spot_price.update(_price, timestamp)
         self._rolling_vol.update(_price, timestamp)

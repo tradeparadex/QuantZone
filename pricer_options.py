@@ -5,7 +5,7 @@ hardcoded implied volatility (IV) value to determine appropriate pricing for
 buy and sell orders.
 """
 
-import logging
+import structlog
 from decimal import Decimal as D
 from math import exp, log, sqrt
 from scipy.stats import norm
@@ -30,7 +30,7 @@ class OptionPricer(BasePricer):
 
     def __init__(self, strategy):
         super().__init__(strategy)
-        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger = structlog.get_logger(self.__class__.__name__)
         self.iv = D('0.5')  # Hardcoded IV value (50%)
 
     def get_raw_fair_price(self, side: Side) -> RawFairPrice:

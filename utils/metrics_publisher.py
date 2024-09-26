@@ -8,7 +8,7 @@ Override to implement your own metrics publisher.
 """
 
 import json
-import logging
+import structlog
 import os
 import socket
 from decimal import Decimal
@@ -68,7 +68,7 @@ class MetricsPublisher:
     @classmethod
     def logger(cls):
         if cls._logger is None:
-            cls._logger = logging.getLogger(__name__)
+            cls._logger = structlog.get_logger(__name__)
         return cls._logger
 
     def __init__(self):

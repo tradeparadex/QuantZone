@@ -3,7 +3,7 @@ This module provides utilities for managing parameters in a configuration file.
 
 It includes classes for defining parameters, parsing their values, and managing them.
 """
-import logging
+import structlog
 import os
 from typing import Any, Dict, List, Optional
 
@@ -34,7 +34,7 @@ class ParamsManager:
     @classmethod
     def logger(cls):
         if cls._logger is None:
-            cls._logger = logging.getLogger(__name__)
+            cls._logger = structlog.get_logger(__name__)
         return cls._logger
 
 

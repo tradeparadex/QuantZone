@@ -8,25 +8,58 @@ It also handles graceful shutdown and exception handling.
 This is the place where you can define the overrides for the strategy; 
 pricer and the risk modules.
 """
-
+import logging
+import structlog
 import argparse
 import asyncio
-import logging
 import os
-# Configure the logging
-logging.basicConfig(
-    level=os.environ.get('LOG_LEVEL', 'INFO'),  # Set the logging level
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',  # Set the log message format
-    datefmt='%Y-%m-%d %H:%M:%S',  # Set the date and time format
-    # filename='app.log',  # Log messages to a file
-    # filemode='a'  # Append to the log file
-)
 import signal
 import traceback
 import sys
-
 from strategy import PerpMarketMaker
 from pricer_perps import PerpPricer
+
+# Configure structlog
+def configure_logging():
+    logging_level = os.environ.get('LOG_LEVEL', 'INFO').upper()
+
+    # Convert string level name to numeric value
+    numeric_level = getattr(logging, logging_level, logging.INFO)
+
+    # Define processors for structlog
+    processors = [
+        structlog.processors.CallsiteParameterAdder(
+            [
+                structlog.processors.CallsiteParameter.PATHNAME,
+                structlog.processors.CallsiteParameter.LINENO,
+                structlog.processors.CallsiteParameter.FUNC_NAME,
+            ]
+        ),
+        structlog.stdlib.add_log_level,
+        structlog.processors.TimeStamper(fmt='%Y-%m-%d %H:%M:%S'),
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.format_exc_info,
+        structlog.dev.ConsoleRenderer(),  # Use ConsoleRenderer for pretty output
+    ]
+
+    # Configure structlog
+    structlog.configure(
+        processors=processors,
+        wrapper_class=structlog.make_filtering_bound_logger(numeric_level),
+        context_class=dict,
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        cache_logger_on_first_use=True,
+    )
+
+    # Configure root logger
+    logging.basicConfig(
+        format="%(message)s",
+        stream=sys.stdout,
+        level=numeric_level,
+    )
+
+configure_logging()
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--config', default='strategy_settings.yaml')
@@ -50,7 +83,7 @@ def handle_exception(loop: asyncio.AbstractEventLoop, context: dict) -> None:
     Handle exceptions that are not handled in tasks.
     """
     msg = context.get("exception", context["message"])
-    logging.error(f"Caught exception: {msg}")
+    structlog.get_logger().error("Caught exception", exception=msg)
 
 
 async def main():

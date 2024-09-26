@@ -6,7 +6,7 @@ risk factors in trading operations, including position limits, volatility,
 and margin requirements.
 """
 
-import logging
+import structlog
 import datetime as dt
 import numpy as np
 from decimal import Decimal as D
@@ -68,7 +68,7 @@ class RiskManager:
     Override to implement your own risk manager.
     """
     def __init__(self, parent: 'PerpMarketMaker') -> None:
-        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger = structlog.get_logger(self.__class__.__name__)
         self.parent: 'PerpMarketMaker' = parent
 
         self.cached_portfolio_margin_state: Optional[PortfolioMarginState] = None

@@ -5,7 +5,7 @@ uses various market data and strategy parameters to determine appropriate
 pricing for buy and sell orders.
 """
 
-import logging
+import structlog
 from decimal import Decimal as D
 from strategy import BasePricer, RawFairPrice
 from utils.data_methods import PriceType, Side
@@ -28,7 +28,7 @@ class PerpPricer(BasePricer):
 
     def __init__(self, strategy):
         super().__init__(strategy)
-        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger = structlog.get_logger(self.__class__.__name__)
 
     def get_raw_fair_price(self, side: Side) -> RawFairPrice:
         """

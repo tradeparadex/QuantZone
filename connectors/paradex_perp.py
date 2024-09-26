@@ -9,7 +9,7 @@ Classes:
 """
 
 import asyncio
-import logging
+import structlog
 import os
 import time
 from decimal import Decimal as D
@@ -77,7 +77,7 @@ class ParadexPerpConnector(ConnectorBase):
             loop: The event loop to use for asynchronous operations.
         """
         super().__init__(loop)
-        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger = structlog.get_logger(self.__class__.__name__)
         self.paradex: Paradex = None
         self.exchange = "paradex_perp"
         self.orderbooks: Dict[str, Depth] = {}
