@@ -58,7 +58,7 @@ export PARADEX_ENVIRONMENT="testnet"
 
 ### How to Set Parameters
 
-Parameters can be passed as environment variables. Here are examples for different setups:
+Parameters can be passed as environment variables OR a YAML configuration file. Here are examples for different setups:
 
 #### Docker
 
@@ -70,6 +70,14 @@ ENV PARAM_NAME=value
 When running the container:
 ```
 docker run -e PARAM_NAME=value paradex-market-maker
+```
+
+If using a YAML configuration file:
+Edit `strategy_settings.yaml`:
+
+```
+parameters:
+  PARAM_NAME: value
 ```
 
 #### Anaconda

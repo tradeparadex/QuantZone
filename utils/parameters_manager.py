@@ -38,16 +38,18 @@ class ParamsManager:
         return cls._logger
 
 
-    def __init__(self, parent, params: List[Param], on_param_update: Optional[callable] = None):
+    def __init__(self, parent, params: List[Param], config: dict, on_param_update: Optional[callable] = None):
         self.parent = parent
         self.params = {
             param.tag: param for param in params
         }
 
+        self.config = config
         # Casting and Overriding default from ENV
         for param in params:
             env_key = f"ALGO_PARAMS_{param.tag.upper()}"
-            value = os.getenv(env_key, param.value)
+            # Order of priority: env > config > default
+            value = os.getenv(env_key, self.config.get(env_key, param.value))
             param.value = value
 
         self.on_param_update = on_param_update

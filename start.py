@@ -9,6 +9,7 @@ This is the place where you can define the overrides for the strategy;
 pricer and the risk modules.
 """
 
+import argparse
 import asyncio
 import logging
 import os
@@ -26,6 +27,10 @@ import sys
 
 from strategy import PerpMarketMaker
 from pricer_perps import PerpPricer
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--config', default='strategy_settings.yaml')
+args = parser.parse_args()
 
 
 async def shutdown(signal: signal.Signals, loop: asyncio.AbstractEventLoop, my_process: PerpMarketMaker) -> None:
@@ -51,7 +56,11 @@ def handle_exception(loop: asyncio.AbstractEventLoop, context: dict) -> None:
 async def main():
 
     loop=asyncio.get_running_loop()
-    strategy = PerpMarketMaker(loop=loop, PricerClass=PerpPricer)
+    strategy = PerpMarketMaker(
+        loop=loop, 
+        PricerClass=PerpPricer,
+        config_path=args.config
+    )
 
     # Set up signal handlers
     signals = (signal.SIGHUP, signal.SIGTERM, signal.SIGINT)
@@ -62,7 +71,6 @@ async def main():
 
     # Set up exception handler
     loop.set_exception_handler(handle_exception)
-
 
     try:
         # Initialize and run your strategy

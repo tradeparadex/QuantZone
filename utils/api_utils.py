@@ -1,5 +1,5 @@
 """
-This module provides utility functions and classes for API rate limiting.
+This module provides utility functions and classes for API such as rate limiting.
 It includes a thread-safe rate limiter to control the rate of API requests.
 """
 

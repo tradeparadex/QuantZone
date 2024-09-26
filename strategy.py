@@ -20,6 +20,7 @@ import traceback
 import numpy as np
 
 from connectors.base_connector import _get_connector
+from utils.misc_utils import load_config
 from utils.async_utils import safe_ensure_future
 from utils.data_methods import (
     ConnectorBase,
@@ -127,11 +128,17 @@ class PerpMarketMaker:
             rm: RiskManager=RiskManager, 
             pm: ParamsManager=ParamsManager, 
             mp: MetricsPublisher=MetricsPublisher,
-            PricerClass: BasePricer=BasePricer
+            PricerClass: BasePricer=BasePricer,
+            config_path: str=None
         ):
         
         self.logger = logging.getLogger(self.__class__.__name__)
         self.loop = loop
+
+        if config_path is not None:
+            self.config = load_config(config_path, raise_error=False)
+        else:
+            self.config = {}
 
         self.market_connector = _get_connector('paradex_perp', loop=self.loop)
 
@@ -207,7 +214,7 @@ class PerpMarketMaker:
 
         self._metrics_pub = mp()
         self._risk_manager = rm(parent=self)
-        self._params_manager = pm(parent=self, params=strategy_parameters)
+        self._params_manager = pm(parent=self, params=strategy_parameters, config=self.config.get('parameters', {}))
 
         self._reeval_task = None
 
