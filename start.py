@@ -22,12 +22,11 @@ from pricer_perps import PerpPricer
 # Configure structlog
 def configure_logging():
     logging_level = os.environ.get('LOG_LEVEL', 'INFO').upper()
-
     # Convert string level name to numeric value
     numeric_level = getattr(logging, logging_level, logging.INFO)
-
     # Define processors for structlog
     processors = [
+        structlog.stdlib.add_logger_name,
         structlog.processors.CallsiteParameterAdder(
             [
                 structlog.processors.CallsiteParameter.PATHNAME,

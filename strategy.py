@@ -8,6 +8,49 @@ Classes:
     RawFairPrice: Represents a fair price with base value.
     BasePricer: Abstract base class for pricing logic.
     PerpMarketMaker: Main class implementing the market making strategy.
+
+Key features:
+1. External Price Reference: Uses spot prices from Binance as a reference for fair value.
+2. Dynamic Pricing: Adjusts quotes based on perpetual basis, funding rate, market volatility, and current account positions.
+3. Risk Management: Implements position limits and adjusts quotes based on current exposure.
+4. Adaptive Spreads: Dynamically adjusts bid-ask spreads based on market conditions and volatility.
+5. Multi-level Quoting: Places multiple orders on each side with increasing spreads and sizes.
+
+When a market event occurs, the strategy processes it as follows:
+1. Market Data Update:
+   - Receives market data through the `on_market_data` method.
+   - Updates exponential moving averages (EMAs) for spot price, basis, and funding rate.
+   - Triggers a reevaluation of the strategy.
+
+2. Strategy Reevaluation (`reeval` method):
+   - Checks if the strategy is enabled and if system health is okay.
+   - Verifies if market data is ready and up-to-date.
+
+3. Proposal Creation:
+   a. Creates a base proposal (`create_base_proposal`):
+      - Calculates fair prices for buy and sell sides.
+      - Generates multiple order levels with increasing spreads and sizes.
+   b. Applies order level modifiers (`apply_order_levels_modifiers`):
+      - Implements price bands to limit order placement.
+
+4. Proposal Refinement:
+   a. Filters out taker orders (`filter_out_takers`):
+      - Ensures orders are not placed too aggressively.
+   b. Applies budget constraints (`apply_budget_constraint`):
+      - Adjusts orders based on available budget and position limits.
+   c. Quantizes order values (`quantize_values`):
+      - Rounds prices and sizes to exchange-allowed increments.
+
+5. Order Management:
+   a. Cancels active orders outside tolerance (`cancel_active_orders`):
+      - Removes orders that deviate significantly from new proposal.
+   b. Cancels orders below minimum spread (`cancel_orders_below_min_spread`):
+      - Ensures maintained orders meet minimum profitability criteria.
+
+6. Proposal Execution:
+   - Places new orders based on the final proposal (`execute_orders_proposal`).
+
+This process ensures that the strategy continuously adapts to market conditions, maintains risk parameters, and provides liquidity efficiently.
 """
 
 import asyncio
@@ -484,14 +527,15 @@ class PerpMarketMaker:
         within_tolerance = []
         deviated = []
 
-        tolerances = [self.order_refresh_tolerance * D(1 + 5 * np.sqrt(i)) for i in range(len(current_prices))]
+        tolerances = [self.order_refresh_tolerance * D(1 + 2 * np.sqrt(i)) for i in range(len(current_prices))]
         for idx, px in enumerate(proposal_prices):
             if idx >= len(current_prices):
                 break
-            if abs(px - current_prices[idx]) / current_prices[idx] > tolerances[idx]:
-                deviated.append(idx)
-            else:
+            dev = abs(px - current_prices[idx]) / current_prices[idx]
+            if dev < tolerances[idx]:
                 within_tolerance.append(idx)
+            else:
+                deviated.append(idx)
 
         if len(proposal_prices) < len(current_prices):
             deviated.extend(range(len(proposal_prices), len(current_prices)))
@@ -614,7 +658,7 @@ class PerpMarketMaker:
                 if idx == 0 and (buy.price / (top_ask+price_tick) - 1) * D(10_000) > self.taker_threshold_bps:
 
                     new_size = market.quantize_order_amount(self.market, max(min(buy.size, self.order_amount), self.min_order_amount))
-                    proposal.buys[idx] = PriceSize(top_ask+price_tick, new_size, OrderType.LIMIT)
+                    proposal.buys[idx] = PriceSize(top_ask, new_size, OrderType.LIMIT)
                 elif buy.price >= top_ask:
                     proposal.buys[idx].price = top_bid - ((np.exp(self.order_level_spread_lambda * idx) - 1) * price_tick)
         
@@ -625,7 +669,7 @@ class PerpMarketMaker:
                 if idx == 0 and ((top_bid-price_tick) / sell.price - 1) * D(10_000) > self.taker_threshold_bps:
 
                     new_size = market.quantize_order_amount(self.market, max(min(sell.size, self.order_amount), self.min_order_amount))
-                    proposal.sells[idx] = PriceSize(top_bid-price_tick, new_size, OrderType.LIMIT)
+                    proposal.sells[idx] = PriceSize(top_bid, new_size, OrderType.LIMIT)
                 elif sell.price <= top_bid:
                     proposal.sells[idx].price = top_ask + ((np.exp(self.order_level_spread_lambda * idx) - 1) * price_tick)
 
