@@ -84,7 +84,8 @@ class BinanceSpotConnector:
             msg: The message containing BBO data.
         """
         _data = msg['params']['data']
-        self.logger.info(f"bbo: {_data}")
+        _ticker = _data['market']
+        self.logger.debug(f"bbo: {_data}")
         _latest_bbo = {
             'ask': Level(px=_data['ask'], qty=_data['ask_size'], offset=_data['seq_no']),
             'bid': Level(px=_data['bid'], qty=_data['bid_size'], offset=_data['seq_no'])
