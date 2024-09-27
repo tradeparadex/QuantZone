@@ -1,6 +1,4 @@
-# QuantZone
-
-## Market Making Strategy for Paradex Perpetuals
+# [QuantZone] Market Making Strategy for Paradex Perpetuals
 
 ### Introduction
 
