@@ -457,7 +457,7 @@ class PerpMarketMaker:
             tag_name=tag,
             market=self.market,
             value=val,
-            account=self.market_connector.get_account_str()
+            account=self.market_connector.account_info['account']
         )
 
         if isinstance(val, D):
