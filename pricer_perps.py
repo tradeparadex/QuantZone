@@ -44,14 +44,22 @@ class PerpPricer(BasePricer):
 
         raw_spot = self.strategy.get_base_price(price_type)
         raw_spot_ema = self.strategy._smoothen_spot_price.value
-        self.logger.debug(f"raw_spot: {raw_spot:.6f}, raw_spot_ema: {raw_spot_ema:.6f}")
+
+        if raw_spot is None or not raw_spot.is_finite():
+            if self.strategy.use_anchor_price:
+                raw_spot = self.strategy.anchor_price
+                raw_spot_ema = self.strategy.anchor_price
+            else:
+                return None
+
+        self.logger.debug(f"raw_spot: {raw_spot}, raw_spot_ema: {raw_spot_ema}")
                 
         if side == Side.SELL:
             fair = max(raw_spot, raw_spot_ema)
         elif side == Side.BUY:
             fair = min(raw_spot, raw_spot_ema)
         else:
-            raise ValueError(f"Invalid side: {side}")
+            fair = raw_spot_ema
 
         capped_basis = self.cap_values(self.factored_basis, -D(0.05), D(0.05))
         capped_fr = self.cap_values(self.factored_fr, -D(0.05), D(0.05))

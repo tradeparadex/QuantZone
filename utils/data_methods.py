@@ -5,10 +5,9 @@ It includes various enums, data structures, and helper classes used throughout
 the trading system for representing orders, prices, and other trading-related concepts.
 """
 
-import datetime as dt
-import structlog
-import time
 import asyncio
+import datetime as dt
+import time
 from abc import ABC, abstractmethod
 from collections import deque, namedtuple
 from decimal import Decimal as D
@@ -16,6 +15,7 @@ from enum import Enum
 from typing import Dict, List
 
 import numpy as np
+import structlog
 from sortedcontainers import SortedDict
 
 
@@ -245,8 +245,8 @@ class Level:
     A class representing a price level in an order book.
     """
     def __init__(self, px: float, qty: float, offset: int=0) -> None:
-        self.px = float(px)
-        self.qty = float(qty)
+        self.px = float(px) if px not in [None, ''] else None
+        self.qty = float(qty) if qty not in [None, ''] else None
         self.offset = int(offset)
 
     def __str__(self):
@@ -305,11 +305,11 @@ class Depth:
 
     def get_best_bid(self):
         """Return the best bid price."""
-        return self.bids.peekitem(index=-1)[1].px
+        return self.bids.peekitem(index=-1)[1].px if len(self.bids) > 0 else None
     
     def get_best_ask(self):
         """Return the best ask price."""
-        return self.asks.peekitem(index=0)[1].px
+        return self.asks.peekitem(index=0)[1].px if len(self.asks) > 0 else None
 
     def get_mid(self):
         """Return the mid price."""

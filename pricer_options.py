@@ -5,12 +5,13 @@ hardcoded implied volatility (IV) value to determine appropriate pricing for
 buy and sell orders.
 """
 
-import structlog
 from decimal import Decimal as D
-from math import exp, log, sqrt
+import numpy as np
+import structlog
 from scipy.stats import norm
 from strategy import BasePricer, RawFairPrice
 from utils.data_methods import PriceType, Side
+
 
 class OptionPricer(BasePricer):
     """
@@ -31,7 +32,7 @@ class OptionPricer(BasePricer):
     def __init__(self, strategy):
         super().__init__(strategy)
         self.logger = structlog.get_logger(self.__class__.__name__)
-        self.iv = D('0.5')  # Hardcoded IV value (50%)
+        self.iv = D('0.80')  # Hardcoded IV value
 
     def get_raw_fair_price(self, side: Side) -> RawFairPrice:
         """
@@ -43,15 +44,53 @@ class OptionPricer(BasePricer):
         Returns:
             RawFairPrice: The raw fair price for the given side.
         """
-        spot_price = self.strategy.get_base_price(PriceType.Mid)
-        strike_price = self.strategy.strike_price
-        time_to_expiry = self.strategy.time_to_expiry
-        risk_free_rate = self.strategy.risk_free_rate
-        is_call = self.strategy.option_type == 'call'
+        spot_price = self.strategy._smoothen_spot_price.value
+        strike_price = self.strike_price
+        time_to_expiry = self.time_to_expiry
+        risk_free_rate = D(0.01)
+        is_call = self.option_type == 'call'
 
-        fair_price = self.black_scholes(spot_price, strike_price, time_to_expiry, risk_free_rate, self.iv, is_call)
+        bs_price = self.black_scholes(spot_price, strike_price, time_to_expiry, risk_free_rate, self.iv, is_call)
 
-        return RawFairPrice(fair=fair_price, base=spot_price)
+        funding_period_hours = D('8')
+        funding_period_years = funding_period_hours / D(24*365)
+        fair_price = self.perp_bs_price(spot_price, strike_price, self.iv, funding_period_years, self.option_type)
+
+        return RawFairPrice(fair=fair_price, base=fair_price)
+
+    @property
+    def option_type(self):
+        return 'call' if self.strategy.market.split('-')[-1] == 'C' else 'put'
+
+    @property
+    def strike_price(self):
+        return D(self.strategy.market.split('-')[2])
+
+    @property
+    def time_to_expiry(self):
+        return D('0.01')
+    
+
+    def option_instrinsic_value(self, S: float, K: float, option_type: str):
+        assert option_type in ["call", "put"]
+        if option_type == "call":
+            return max(0, S-K)
+        else:
+            return max(0, K-S)
+    
+    def perp_bs_price(self, S: float, K: float, sigma: float, funding_period_years: float, option_type: str):
+        return self.option_instrinsic_value(S, K, option_type) + self.perp_bs_time_value(S, K, sigma, funding_period_years)
+
+    def perp_bs_time_value(self, S: float, K: float, sigma: float, funding_period_years: float):
+        assert sigma >= 0
+        if sigma == 0:
+            return 0
+        else:
+            u = np.sqrt(1 + 8 / (sigma*sigma*funding_period_years))
+            if S >= K:
+                return (K / u) * (S / K) ** (-(u - 1) / 2)
+            else:
+                return (K / u) * (S / K) ** ((u + 1) / 2)
 
     def black_scholes(self, S: D, K: D, T: D, r: D, sigma: D, is_call: bool) -> D:
         """
@@ -68,13 +107,13 @@ class OptionPricer(BasePricer):
         Returns:
             Decimal: The calculated option price
         """
-        d1 = (log(S / K) + (r + sigma ** 2 / 2) * T) / (sigma * sqrt(T))
-        d2 = d1 - sigma * sqrt(T)
+        d1 = (D(np.log(S / K)) + (r + sigma ** 2 / 2) * T) / (sigma * np.sqrt(T))
+        d2 = d1 - sigma * np.sqrt(T)
 
         if is_call:
-            option_price = S * norm.cdf(d1) - K * exp(-r * T) * norm.cdf(d2)
+            option_price = S * D(norm.cdf(float(d1))) - K * np.exp(-r * T) * D(norm.cdf(float(d2)))
         else:
-            option_price = K * exp(-r * T) * norm.cdf(-d2) - S * norm.cdf(-d1)
+            option_price = K * np.exp(-r * T) * D(norm.cdf(-float(d2))) - S * D(norm.cdf(-float(d1)))
 
         return D(str(option_price))
 

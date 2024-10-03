@@ -54,16 +54,16 @@ This process ensures that the strategy continuously adapts to market conditions,
 """
 
 import asyncio
-import structlog
 import os
+import re
 import time
-from decimal import Decimal as D
-from typing import List, Optional, Union, Tuple
 import traceback
-import numpy as np
+from decimal import Decimal as D
+from typing import List, Optional, Tuple, Union
 
+import numpy as np
+import structlog
 from connectors.base_connector import _get_connector
-from utils.misc_utils import load_config
 from utils.async_utils import safe_ensure_future
 from utils.data_methods import (
     ConnectorBase,
@@ -79,8 +79,10 @@ from utils.data_methods import (
     TriggerType,
 )
 from utils.metrics_publisher import MetricsMessage, MetricsPublisher
+from utils.misc_utils import load_config
 from utils.parameters_manager import Param, ParamsManager
 from utils.risk_manager import RiskManager
+
 
 class RawFairPrice:
     """
@@ -164,6 +166,8 @@ class PerpMarketMaker:
     PARAM_BASE_VOLATILITY = "base_volatility"
     PARAM_VOLATILITY_EXPONENT = "volatility_exponent"
     PARAM_VOLATILITY_CAP = "volatility_cap"
+    PARAM_ANCHOR_PRICE = "anchor_price"
+    PARAM_EXTERNAL_PRICE_MULTIPLIER = "external_price_multiplier"
 
 
 
@@ -252,7 +256,9 @@ class PerpMarketMaker:
             Param(self.PARAM_BULK_REQUESTS, 'True', bool),
             Param(self.PARAM_BASE_VOLATILITY, '0.05', D),
             Param(self.PARAM_VOLATILITY_EXPONENT, '2', D),
-            Param(self.PARAM_VOLATILITY_CAP, '1', D)
+            Param(self.PARAM_VOLATILITY_CAP, '1', D),
+            Param(self.PARAM_EXTERNAL_PRICE_MULTIPLIER, '1', D),
+            Param(self.PARAM_ANCHOR_PRICE, '0', D)
         ]
 
         self._metrics_pub = mp()
@@ -415,16 +421,37 @@ class PerpMarketMaker:
     @property
     def bulk_requests(self) -> bool:
         return self._params_manager.get_param_value(self.PARAM_BULK_REQUESTS)
+    
+    @property
+    def external_price_multiplier(self) -> D:
+        return self._params_manager.get_param_value(self.PARAM_EXTERNAL_PRICE_MULTIPLIER)
 
     @property
     async def is_close_only_mode(self):
         if self._params_manager.get_param_value(self.PARAM_CLOSE_ONLY_MODE):
             return True
         return not (await self._risk_manager.can_quote_to_open())
+    
+    @property
+    def use_anchor_price(self) -> bool:
+        return self._params_manager.get_param_value(self.PARAM_ANCHOR_PRICE) is not None and \
+            self._params_manager.get_param_value(self.PARAM_ANCHOR_PRICE).is_finite() and \
+            self._params_manager.get_param_value(self.PARAM_ANCHOR_PRICE) != D('0')
+
+    @property
+    def anchor_price(self) -> D:
+        return self._params_manager.get_param_value(self.PARAM_ANCHOR_PRICE)
 
     @property
     def min_order_amount(self) -> D:
-        return self.market_connector.trading_rules[self.market].min_notional_size / self.get_price_by_type(PriceType.Mid)
+        if self.get_price_by_type(PriceType.Mid) is not None:
+            return self.market_connector.trading_rules[self.market].min_notional_size / self.get_price_by_type(PriceType.Mid)
+        elif self.get_fair_price() is not None:
+            return self.market_connector.trading_rules[self.market].min_notional_size / self.get_fair_price()
+        elif self.use_anchor_price:
+            return self.market_connector.trading_rules[self.market].min_notional_size / self.anchor_price
+        
+        return D('0')
 
     @property
     def min_price_allowed(self) -> D:
@@ -432,8 +459,24 @@ class PerpMarketMaker:
 
     @property
     def order_amount(self) -> D:
-        return self.order_amount_usd / self.get_price_by_type(PriceType.Mid)
+        if self.get_price_by_type(PriceType.Mid) is not None:
+            return self.order_amount_usd / self.get_price_by_type(PriceType.Mid)
+        elif self.get_fair_price() is not None:
+            return self.order_amount_usd / self.get_fair_price()
+        elif self.use_anchor_price:
+            return self.order_amount_usd / self.anchor_price
+        
+        return D('0')
 
+    @property
+    def market_is_swap(self) -> bool:
+        pattern = re.compile(r'^[A-Z]+-[A-Z]+-PERP$', re.IGNORECASE)
+        return bool(pattern.match(self.market))
+
+    def get_order_amount(self, price: D = None) -> D:
+        if price is None:
+            return self.order_amount
+        return self.order_amount_usd / price
 
     def now_ns(self) -> int:
         """
@@ -457,7 +500,7 @@ class PerpMarketMaker:
             tag_name=tag,
             market=self.market,
             value=val,
-            account=self.market_connector.account_info['account']
+            account=self.market_connector.account_info.get('account', 'N/A')
         )
 
         if isinstance(val, D):
@@ -487,13 +530,13 @@ class PerpMarketMaker:
         _order_increment = self.order_level_amount_bps / D(10_000) * self.order_amount
         for level in range(0, self.buy_levels):
             price = fair_buy - ((np.exp(self.order_level_spread_lambda * level) - 1) * _num_ticks_increment)
-            size = self.order_amount + (_order_increment * (np.exp(self.order_size_spread_lambda * level) - 1))
+            size = self.get_order_amount(price) + (_order_increment * (np.exp(self.order_size_spread_lambda * level) - 1))
 
             if size > 0:
-                buys.append(PriceSize(price, size))                   
+                buys.append(PriceSize(price, size))
         for level in range(0, self.sell_levels):
             price = fair_sell + ((np.exp(self.order_level_spread_lambda * level) - 1) * _num_ticks_increment)
-            size = self.order_amount + (_order_increment * (np.exp(self.order_size_spread_lambda * level) - 1))
+            size = self.get_order_amount(price) + (_order_increment * (np.exp(self.order_size_spread_lambda * level) - 1))
 
             if size > 0:
                 sells.append(PriceSize(price, size))
@@ -642,11 +685,11 @@ class PerpMarketMaker:
         market: ConnectorBase = self.market_connector
 
         top_ask =self.get_price_by_type(PriceType.BestAsk)
-        if not top_ask.is_finite():
+        if top_ask is None or not top_ask.is_finite():
             top_ask = self.get_fair_price(side=Side.SELL)
         
         top_bid = self.get_price_by_type(PriceType.BestBid)
-        if not top_bid.is_finite():
+        if top_bid is None or not top_bid.is_finite():
             top_bid = self.get_fair_price(side=Side.BUY)
 
         price_tick = market.trading_rules[self.market].min_price_increment
@@ -730,11 +773,7 @@ class PerpMarketMaker:
         if self._rolling_vol is None:
             self.logger.warning("Volatility not ready.")
             return False
-        
-        if self.get_price_by_type(PriceType.Mid) is None:
-            self.logger.warning("Mid price not set.")
-            return False
-        
+                
         return True
 
 
@@ -850,7 +889,12 @@ class PerpMarketMaker:
         else:
             _val = self.external_connector.orderbooks[mkt].get_mid()
 
-        return D(_val) if _val is not None else None
+        if self.external_price_multiplier is not None:
+            _mult = D(self.external_price_multiplier)
+        else:
+            _mult = D(1)
+
+        return D(_val) * _mult if _val is not None else None
 
     def is_ready_to_trade(self) -> bool:
         """
@@ -862,7 +906,7 @@ class PerpMarketMaker:
         if not self.market_connector.account_info:
             return False
 
-        if self.market not in self.market_connector.latest_fundings:
+        if self.market_is_swap and self.market not in self.market_connector.latest_fundings:
             return False
         
         return True
@@ -892,7 +936,7 @@ class PerpMarketMaker:
         self._smoothen_funding_rate.update(inst_rate, timestamp)
         self._smoothen_basis.update(inst_basis, timestamp)
 
-        _price = self.get_base_price(PriceType.Mid)
+        _price = self.get_base_price(PriceType.Mid) or self.get_base_price(PriceType.BestBid) or self.get_base_price(PriceType.BestAsk)
         if _price is None:
             self.logger.warning("Price is None. Skipping EMA update.")
             return
@@ -970,18 +1014,21 @@ class PerpMarketMaker:
 
         # If the market is not finite, widen more.
         if side == Side.SELL:
-            if not market_ask.is_finite():
+            if market_ask is None or not market_ask.is_finite():
                 self.logger.warning("Market ask is not finite. Widen more.")
                 final_fair = fair + raw_price.base * self.empty_book_penalty
             else: 
                 final_fair = fair
 
-        if side == Side.BUY:
-            if not market_bid.is_finite():
+        elif side == Side.BUY:
+            if market_bid is None or not market_bid.is_finite():
                 self.logger.warning("Market bid is not finite. Widen more.")
                 final_fair = fair - raw_price.base * self.empty_book_penalty
             else:
                 final_fair = fair
+        
+        else:
+            final_fair = fair
     
         return final_fair
     
@@ -994,6 +1041,10 @@ class PerpMarketMaker:
         market_bid = self.get_price_by_type(PriceType.BestBid)
         market_mid = self.get_price_by_type(PriceType.Mid)
 
+        if market_mid is None or not market_mid.is_finite():
+            self.logger.warning("Market mid is not finite. Skipping metrics.")
+            return
+            
         cur_pos_usd = self.get_active_position(self.market) * market_mid
         cur_pos_account_usd = self.get_global_position_usd()
 
@@ -1001,11 +1052,12 @@ class PerpMarketMaker:
         self._publish_strat_metric('pos_adj_loc', -1 * self.pos_lean_bps_per_100k * cur_pos_usd)
         self._publish_strat_metric('pos_adj_global', -1 * self.pos_global_lean_bps_per_100k * cur_pos_account_usd)
         self._publish_strat_metric('quote_spread', final_ask - final_bid)
-        self._publish_strat_metric('market_spread', market_ask - market_bid)
         self._publish_strat_metric('final_ask', final_ask)
         self._publish_strat_metric('final_bid', final_bid)
+
         self._publish_strat_metric('market_bid', market_bid)
         self._publish_strat_metric('market_ask', market_ask)
+        self._publish_strat_metric('market_spread', market_ask - market_bid)
         self._publish_strat_metric('ratio_quoted_market_bid', final_bid / market_bid - 1)
         self._publish_strat_metric('ratio_quoted_market_ask', final_ask / market_ask - 1)
         self._publish_strat_metric('volatility', self._rolling_vol.get_value())
@@ -1065,12 +1117,12 @@ class PerpMarketMaker:
 
 
     async def on_market_data(self, update_type: str, ticker: Ticker, data: dict) -> None:
+        self.update_emas(self.now_ms())
+
         if not self.is_ready_to_trade():
             self.cancel_all_orders()
             return
 
-        self.update_emas(self.now_ms())
-        
         if self._reeval_task is None or self._reeval_task.done():
             self._reeval_task = safe_ensure_future(self.reeval(TriggerType.MARKET_DATA))
 
@@ -1108,6 +1160,7 @@ class PerpMarketMaker:
                 self.publish_metrics()
             
             self.market_connector.sync_open_orders(self.market)
+
             await self.reeval(TriggerType.PERIODIC)
             await asyncio.sleep(30)
 

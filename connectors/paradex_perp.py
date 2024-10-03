@@ -9,30 +9,21 @@ Classes:
 """
 
 import asyncio
-import structlog
+import hashlib
 import os
 import time
 from decimal import Decimal as D
-from typing import Dict, Callable, Any
-import hashlib
-from utils.data_methods import (
-    Order,
-    ConnectorBase, 
-    Depth, 
-    Level, 
-    Ticker, 
-    TradingRules, 
-    OrderType,
-    Side,
-    UpdateType
-)
-from utils.api_utils import SyncRateLimiter
+from typing import Any, Callable, Dict
+
+import structlog
 from marshmallow.exceptions import ValidationError
 from paradex_py import Paradex
 from paradex_py.api.ws_client import ParadexWebsocketChannel
+from paradex_py.common.order import Order as ParadexOrder, OrderSide as ParadexOrderSide, OrderType as ParadexOrderType
 from paradex_py.environment import PROD, TESTNET
-from paradex_py.common.order import Order as ParadexOrder
-from paradex_py.common.order import OrderType as ParadexOrderType, OrderSide as ParadexOrderSide
+from utils.api_utils import SyncRateLimiter
+from utils.data_methods import ConnectorBase, Depth, Level, Order, OrderType, Side, Ticker, TradingRules, UpdateType
+
 
 class ParadexPerpConnector(ConnectorBase):
     """
@@ -94,7 +85,7 @@ class ParadexPerpConnector(ConnectorBase):
 
         self._order_counter = 0
 
-        self.rate_limiter = SyncRateLimiter(5) # X requests per second, adjust as needed
+        self.rate_limiter = SyncRateLimiter(4) # X requests per second, adjust as needed
 
     def rate_limited_request(self, method: Callable, *args, **kwargs) -> Any:
         """
@@ -163,6 +154,28 @@ class ParadexPerpConnector(ConnectorBase):
         Args:
             mkt (str): The market symbol.
         """
+
+        existing_orders = []
+        try:
+            p_orders = self.rate_limited_request(self.paradex.api_client.fetch_orders, {'market': mkt})
+            existing_orders = p_orders['results']
+        except Exception as e:
+            self.logger.error(f"fetch orders failed: {e}")
+    
+        for po in existing_orders:
+
+            if po['client_id'] not in self.active_orders:
+                self.active_orders[po['client_id']] = Order(
+                    symbol=po['market'],
+                    side=Side.BUY if po['side'] == 'BUY' else Side.SELL,
+                    price=D(po['price']),
+                    amount=D(po['size']),
+                    order_type=OrderType.LIMIT if po['type'] == 'LIMIT' else OrderType.MARKET
+                )
+                self.active_orders[po['client_id']].client_order_id = po['client_id']
+
+            self.process_order_update(po)
+
         for ao in set(self.active_orders.keys()):
             try:
                 po = self.rate_limited_request(self.paradex.api_client.fetch_order_by_client_id, ao)
@@ -178,28 +191,6 @@ class ParadexPerpConnector(ConnectorBase):
                     del self.active_orders[ao]
                 else:
                     self.logger.error(f"fetch order failed: {e}")
-
-        existing_orders = []
-        try:
-            p_orders = self.rate_limited_request(self.paradex.api_client.fetch_orders, {'market': mkt})
-            existing_orders = p_orders['results']
-        except Exception as e:
-            self.logger.error(f"fetch orders failed: {e}")
-    
-
-        for po in existing_orders:
-
-            if po['client_id'] not in self.active_orders:
-                self.active_orders[po['client_id']] = Order(
-                    symbol=po['market'],
-                    side=Side.BUY if po['side'] == 'BUY' else Side.SELL,
-                    price=D(po['price']),
-                    amount=D(po['size']),
-                    order_type=OrderType.LIMIT if po['type'] == 'LIMIT' else OrderType.MARKET
-                )
-                self.active_orders[po['client_id']].client_order_id = po['client_id']
-
-            self.process_order_update(po)
 
 
     def bulk_cancel_orders(self, orders):
