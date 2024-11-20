@@ -6,6 +6,7 @@ buy and sell orders.
 """
 
 from decimal import Decimal as D
+
 import numpy as np
 import structlog
 from scipy.stats import norm
@@ -46,11 +47,11 @@ class OptionPricer(BasePricer):
         """
         spot_price = self.strategy._smoothen_spot_price.value
         strike_price = self.strike_price
-        time_to_expiry = self.time_to_expiry
-        risk_free_rate = D(0.01)
-        is_call = self.option_type == 'call'
-
-        bs_price = self.black_scholes(spot_price, strike_price, time_to_expiry, risk_free_rate, self.iv, is_call)
+        
+        # time_to_expiry = self.time_to_expiry
+        # risk_free_rate = D(0.01)
+        # is_call = self.option_type == 'call'
+        # bs_price = self.black_scholes(spot_price, strike_price, time_to_expiry, risk_free_rate, self.iv, is_call)
 
         funding_period_hours = D('8')
         funding_period_years = funding_period_hours / D(24*365)

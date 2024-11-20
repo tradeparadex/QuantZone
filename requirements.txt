@@ -1,6 +1,8 @@
 marshmallow==3.22.0
 numpy==2.1.0
+pandas==2.2.3
 paradex_py==0.4.2
+pybit==5.8.0
 pytest==8.3.3
 python-binance==1.0.19
 ruamel.yaml==0.18.6

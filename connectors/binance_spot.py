@@ -9,17 +9,13 @@ Classes:
 """
 
 import asyncio
-import structlog
 import time
 from typing import Dict
-from binance import AsyncClient, BinanceSocketManager
 
-from utils.data_methods import (
-    Ticker,
-    Level,
-    Depth,
-    UpdateType
-)
+import structlog
+from binance import AsyncClient, BinanceSocketManager
+from utils.data_methods import Depth, Level, Ticker, UpdateType
+
 
 class BinanceSpotConnector:
     """
@@ -30,7 +26,7 @@ class BinanceSpotConnector:
     Attributes:
         logger (logging.Logger): Logger for this class.
         loop (asyncio.AbstractEventLoop): Event loop for asynchronous operations.
-        exchange (str): The name of the exchange ("binance_perp").
+        exchange (str): The name of the exchange ("binance_spot").
         binance (AsyncClient): Binance AsyncClient instance.
         _socket_manager (BinanceSocketManager): Binance WebSocket manager.
         orderbooks (Dict[str, Depth]): Dictionary of order books for different markets.
@@ -51,7 +47,7 @@ class BinanceSpotConnector:
         """
         self.logger = structlog.get_logger(self.__class__.__name__)
         self.loop = loop
-        self.exchange = "binance_perp"
+        self.exchange = "binance_spot"
         self.binance: AsyncClient = None
         self._socket_manager: BinanceSocketManager = None
 

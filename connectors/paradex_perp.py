@@ -22,7 +22,19 @@ from paradex_py.api.ws_client import ParadexWebsocketChannel
 from paradex_py.common.order import Order as ParadexOrder, OrderSide as ParadexOrderSide, OrderType as ParadexOrderType
 from paradex_py.environment import PROD, TESTNET
 from utils.api_utils import SyncRateLimiter
-from utils.data_methods import ConnectorBase, Depth, Level, Order, OrderType, Side, Ticker, TradingRules, UpdateType
+from utils.data_methods import (
+    ConnectorBase,
+    Depth,
+    Level,
+    Order,
+    OrderType,
+    Side,
+    Ticker,
+    TradingRules,
+    UpdateType,
+    Position,
+    AccountInfo
+)
 
 
 class ParadexPerpConnector(ConnectorBase):
@@ -60,7 +72,7 @@ class ParadexPerpConnector(ConnectorBase):
         start(): Start the connector.
     """
 
-    def __init__(self, loop):
+    def __init__(self, loop, key=None, secret=None):
         """
         Initialize the ParadexPerpConnector.
 
@@ -71,21 +83,27 @@ class ParadexPerpConnector(ConnectorBase):
         self.logger = structlog.get_logger(self.__class__.__name__)
         self.paradex: Paradex = None
         self.exchange = "paradex_perp"
+
+        self.l1_address = key or os.getenv("PARADEX_L1_ADDRESS")
+        self.l2_private_key = secret or os.getenv("PARADEX_PRIVATE_KEY")
+
         self.orderbooks: Dict[str, Depth] = {}
         self.bbos: Dict[str, Dict[str, Level]] = {}
         self.latest_fundings: Dict[str, dict] = {}
         self.account_info = {}
 
-        self._data_callbacks: Dict[str, callable] = {}
-        self._trade_callbacks: Dict[str, callable] = {}
+        self._data_callbacks: Dict[str, Callable] = {}
+        self._trade_callbacks: Dict[str, Callable] = {}
+        self._account_callback: Callable = None
 
         self.positions: Dict[str, dict] = {}
+        self.internal_positions: Dict[str, dict] = {}
 
         self.active_orders: Dict[str, Order] = {}
 
         self._order_counter = 0
 
-        self.rate_limiter = SyncRateLimiter(4) # X requests per second, adjust as needed
+        self.rate_limiter = SyncRateLimiter(10) # X requests per second, adjust as needed
 
     def rate_limited_request(self, method: Callable, *args, **kwargs) -> Any:
         """
@@ -105,8 +123,8 @@ class ParadexPerpConnector(ConnectorBase):
 
         self.paradex = Paradex(
             env=_paradex_perpetual_chain, 
-            l1_address=os.getenv("PARADEX_L1_ADDRESS"), 
-            l2_private_key=os.getenv("PARADEX_PRIVATE_KEY"),
+            l1_address=self.l1_address,
+            l2_private_key=self.l2_private_key,
             logger=self.logger
         )
 
@@ -229,11 +247,14 @@ class ParadexPerpConnector(ConnectorBase):
         elif order.order_type == OrderType.MARKET:
             _order_type = ParadexOrderType.Market
             _order_instruction = "IOC"
+        elif order.order_type == OrderType.IOC:
+            _order_type = ParadexOrderType.Limit
+            _order_instruction = "IOC"
 
         _order_side = ParadexOrderSide.Buy if order.side == Side.BUY else ParadexOrderSide.Sell
 
         order.client_order_id = self.generate_incremental_unique_id(order.symbol)
-        self.logger.info(f"inserting order: {order.client_order_id}")
+        self.logger.debug(f"inserting order: {order.client_order_id}")
 
         _po = ParadexOrder(
             market=order.symbol,
@@ -302,8 +323,14 @@ class ParadexPerpConnector(ConnectorBase):
     async def _on_fills(self, channel, msg):
         """Handle fill updates."""
         _data = msg['params']['data']
-        self.logger.info(f"fills: {_data}")
-        # Trigger pos sync
+        self.logger.info(f"fills update: {_data}")
+        
+        _market = _data['market']
+        self.internal_positions[_market]['fill_id'] = _data['id']
+        self.internal_positions[_market]['ts'] = _data['created_at']
+        self.internal_positions[_market]['size'] += (D(_data['size']) * (-1 if _data['side'] == 'SELL' else 1))
+        self.logger.info(f"fills current size: {self.internal_positions[_market]['size']}")
+
 
     async def _on_order_update(self, channel, msg):
         """Handle order updates."""
@@ -316,15 +343,26 @@ class ParadexPerpConnector(ConnectorBase):
         if _data['client_id'] not in self.active_orders:
             self.logger.warning(f"order not found: {_data['client_id']}")
             return
+
+        _market = _data['market']
         if _data['status'] == 'NEW':
             self.active_orders[_data['client_id']].status = 'NEW'
+            if _market in self._trade_callbacks:
+                self._trade_callbacks[_market](self.active_orders[_data['client_id']], UpdateType.ORDER_UPDATE)
         elif _data['status'] == 'OPEN':
             self.active_orders[_data['client_id']].status = 'OPEN'
+            if _market in self._trade_callbacks:
+                self._trade_callbacks[_market](self.active_orders[_data['client_id']], UpdateType.ORDER_UPDATE)
         elif _data['status'] == 'CLOSED':
             self.logger.info(f"order closed: {_data['cancel_reason']}")
+            if _market in self._trade_callbacks:
+                self._trade_callbacks[_market](self.active_orders[_data['client_id']], UpdateType.ORDER_UPDATE)
             del self.active_orders[_data['client_id']]
         else:
             self.active_orders[_data['client_id']] = _data
+            if _market in self._trade_callbacks:
+                self._trade_callbacks[_market](self.active_orders[_data['client_id']], UpdateType.ORDER_UPDATE)
+
 
     async def _on_orderbook(self, channel, msg):
         """Handle orderbook updates."""
@@ -353,14 +391,15 @@ class ParadexPerpConnector(ConnectorBase):
             }
             ob.update_order_book(_up_dict, reset=True)
         elif _update_type == 'd':
+            all_updates = _data['deletes'] + _data['inserts'] + _data['updates']
             _up_dict = {
                 'bids': [
-                    {'price': x['price'], 'size': '0', 'offset': _offset} 
-                    for x in [y for y in _data['deletes'] if y['side'] == 'BUY']
+                    {'price': x['price'], 'size': x['size'], 'offset': _offset} 
+                    for x in [y for y in all_updates if y['side'] == 'BUY']
                 ],
                 'asks': [
-                    {'price': x['price'], 'size': '0', 'offset': _offset} 
-                    for x in [y for y in _data['deletes'] if y['side'] == 'SELL']
+                    {'price': x['price'], 'size': x['size'], 'offset': _offset} 
+                    for x in [y for y in all_updates if y['side'] == 'SELL']
                 ]
             }
             ob.update_order_book(_up_dict)
@@ -377,6 +416,51 @@ class ParadexPerpConnector(ConnectorBase):
         _data = msg['params']['data']
         self.logger.debug(f"positions: {_data}")
         self.positions[_data['market']] = _data
+
+        force_sync = False
+        force_sync = force_sync or (_data['market'] not in self.internal_positions)
+
+        if _data['market'] in self.orderbooks and _data['market'] in self.internal_positions:
+            if self.internal_positions[_data['market']]['fill_id'] == _data['last_fill_id']:
+                if self.internal_positions[_data['market']]['size'] != D(_data['size']):
+                    force_sync = True
+                    self.logger.info(f"pos vs fills size: {self.internal_positions[_data['market']]['size']} vs {_data['size']}")
+                    
+        if force_sync:
+            self.internal_positions[_data['market']] = {
+                'size': D(_data['size']),
+                'fill_id': _data['last_fill_id'],
+                'ts': _data['last_updated_at']
+            }
+
+        if self._account_callback:
+            self._account_callback(_data, UpdateType.POSITION)
+
+    def get_position_size(self, mkt: str) -> D:
+        """
+        Get the position size for a market.
+        """
+        if mkt in self.internal_positions:
+            return D(self.internal_positions[mkt]['size'])
+        elif mkt in self.positions:
+            return D(self.positions[mkt]['size'])
+        return D(0)
+
+    def get_positions(self) -> Dict[str, Position]:
+        return {x: Position(x, D(self.positions[x]['size']), D(self.positions[x]['cost_usd']) + D(self.positions[x]['unrealized_pnl'])) for x in self.positions}
+
+    def fetch_bbo(self, symbol: str) -> Dict[str, Level]:
+        bbos = self.paradex.api_client.fetch_bbo(symbol)
+        return {
+            'ask': Level(px=bbos['ask'], qty=bbos['ask_size'], offset=bbos['seq_no']),
+            'bid': Level(px=bbos['bid'], qty=bbos['bid_size'], offset=bbos['seq_no'])
+        }
+
+    def get_account_info(self) -> AccountInfo:
+        return AccountInfo(
+            free_collateral=D(self.account_info['free_collateral']),
+            account_value=D(self.account_info['account_value'])
+        )
 
     async def _on_trades(self, channel, msg):
         """Handle trade updates."""
@@ -417,12 +501,6 @@ class ParadexPerpConnector(ConnectorBase):
         )
 
         await self.paradex.ws_client.subscribe(
-            ParadexWebsocketChannel.ORDER_BOOK,
-            callback=self._on_orderbook,
-            params={"market": market},
-        )
-
-        await self.paradex.ws_client.subscribe(
             ParadexWebsocketChannel.ORDER_BOOK_DELTAS,
             callback=self._on_orderbook,
             params={"market": market},
@@ -459,8 +537,10 @@ class ParadexPerpConnector(ConnectorBase):
         self.sync_open_orders(market)
 
 
-    async def subscribe_to_account_channels(self):
+    async def subscribe_to_account_channels(self, callback: Callable = None):
         """Subscribe to account-related channels."""
+        if callback:
+            self._account_callback = callback
         await self.paradex.ws_client.subscribe(
             ParadexWebsocketChannel.ACCOUNT,
             self._on_account_update,
@@ -499,8 +579,10 @@ class ParadexPerpConnector(ConnectorBase):
         for pos in positions['results']:
             self.positions[pos['market']] = pos
 
-    async def start(self):
+    async def start(self, account_callback: Callable = None):
         """Start the connector by initializing snapshots and connections."""
         await self.snapshots()
         await self._connect_to_ws()
-        await self.subscribe_to_account_channels()
+        
+        self._account_callback = account_callback
+        await self.subscribe_to_account_channels(self._account_callback)

@@ -23,7 +23,7 @@ class SyncRateLimiter:
         with self.lock:
             while self.tokens < 1:
                 self.add_new_tokens()
-                time.sleep(0.1)
+                time.sleep(0.00001)
             self.tokens -= 1
 
     def add_new_tokens(self):
