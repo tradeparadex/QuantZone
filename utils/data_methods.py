@@ -13,7 +13,7 @@ from collections import deque, namedtuple
 from decimal import Decimal as D
 from enum import Enum
 from typing import Dict, List
-
+import math
 import numpy as np
 import structlog
 from sortedcontainers import SortedDict
@@ -23,7 +23,8 @@ class OrderType(Enum):
     MARKET = 1
     LIMIT = 2
     LIMIT_MAKER = 3
-
+    IOC = 4
+    
     def is_limit_type(self):
         return self in (OrderType.LIMIT, OrderType.LIMIT_MAKER)
     
@@ -40,6 +41,16 @@ class PriceType(Enum):
     BestAsk = 'best_ask'
     Mid = 'mid'
 
+AccountInfo = namedtuple('AccountInfo', ['free_collateral', 'account_value'])
+
+class Position:
+    def __init__(self, symbol: str, size: D, notional: D):
+        self.symbol = symbol
+        self.size = size
+        self.notional = notional
+
+    def __repr__(self):
+        return f"Position<{self.symbol}: {self.notional}>"
 
 class PriceSize:
     """
@@ -65,8 +76,9 @@ class Order:
         self.amount = amount
         self.order_type = order_type
         self.client_order_id = None
-        self.exhange_order_id = None
+        self.exchange_order_id = None
         self.status = 'CREATED'
+        self.created_ts_ns = time.time_ns()
 
     def __repr__(self):
         return f"[{self.symbol}|{self.order_type}] {self.side} {self.amount}@{self.price} ({self.status})"
@@ -128,6 +140,8 @@ class UpdateType(Enum):
     TRADETICK = 2
     BBO = 3
     FUNDING = 4
+    ORDER_UPDATE = 5
+    POSITION = 6
 
 class RollingAnnualizedVolatility:
     """
@@ -214,7 +228,7 @@ class ExponentialMovingAverage:
         self.value = init_val
         self.timestamp = .0
         self.half_life = D(half_life_ms) # half-life in ms
-        self.lambda_ = D(np.log(2)) / self.half_life  # decay constant based on half-life
+        self.lambda_ = D(math.log(2)) / self.half_life  # decay constant based on half-life
         self.decay_on_read = decay_on_read
 
     def decay(self, current_timestamp: float):
@@ -251,6 +265,9 @@ class Level:
 
     def __str__(self):
         return f"{self.px}@{self.qty}"
+    
+    def __repr__(self):
+        return f"Level<{self.px}@{self.qty}>"
 
 class Depth:
     """

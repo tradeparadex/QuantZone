@@ -35,7 +35,7 @@ def configure_logging():
             ]
         ),
         structlog.stdlib.add_log_level,
-        structlog.processors.TimeStamper(fmt='%Y-%m-%d %H:%M:%S'),
+        structlog.processors.TimeStamper(fmt='%Y-%m-%d %H:%M:%S.%f'),
         structlog.processors.StackInfoRenderer(),
         structlog.processors.format_exc_info,
         structlog.dev.ConsoleRenderer(),  # Use ConsoleRenderer for pretty output
