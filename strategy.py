@@ -175,6 +175,7 @@ class PerpMarketMaker:
     PARAM_PREMIUM_FACTOR = "premium_factor"
     PARAM_PREMIUM_WINDOW_SIZE_SEC = "premium_window_size_sec"
     PARAM_PREMIUM_ADJUSTMENT_CAP = "premium_adjustment_cap"
+    PARAM_CANCEL_BY_EXCHANGE_ORDER_ID = "cancel_by_exchange_order_id"
 
     def __init__(self, loop: asyncio.AbstractEventLoop, 
             rm: RiskManager=RiskManager, 
@@ -271,6 +272,7 @@ class PerpMarketMaker:
             Param(self.PARAM_PREMIUM_FACTOR, '0', D),
             Param(self.PARAM_PREMIUM_WINDOW_SIZE_SEC, '1800', float),
             Param(self.PARAM_PREMIUM_ADJUSTMENT_CAP, '0.001', D),
+            Param(self.PARAM_CANCEL_BY_EXCHANGE_ORDER_ID, 'True', bool),
         ]
 
         self._metrics_pub = mp()
@@ -510,6 +512,16 @@ class PerpMarketMaker:
     def market_is_swap(self) -> bool:
         pattern = re.compile(r'^[A-Z]+-[A-Z]+-PERP$', re.IGNORECASE)
         return bool(pattern.match(self.market))
+    
+    @property 
+    def cancel_by(self) -> str:
+        by_exchange_order_id = self._params_manager.get_param_value(self.PARAM_CANCEL_BY_EXCHANGE_ORDER_ID)
+        if by_exchange_order_id or by_exchange_order_id is None:
+            order_identifier = "exchange_order_id"
+        else:
+            order_identifier = "client_order_id"
+        return order_identifier
+
 
     def get_order_amount(self, price: D = None) -> D:
         if price is None:
@@ -908,18 +920,21 @@ class PerpMarketMaker:
             self.processing = False
 
 
-    def cancel_order(self, mkt: str, order_id: str) -> None:
+    def cancel_order(self, mkt: str, client_order_id: str) -> None:
         """
-        Cancel an order by its client order ID.
+        Cancel an order by its client order ID. Which endpoint to use at the exchange side is set by 'PARAM_CANCEL_BY_EXCHANGE_ORDER_ID' 
         """
-        self.market_connector.cancel_order(order_id)
+        cancel_by = self.cancel_by 
+        self.market_connector.cancel_order(client_order_id, by=cancel_by)
 
     def cancel_all_orders(self) -> None:
         """
         Cancel all active orders.
         """
         if self.bulk_requests:
-            self.market_connector.bulk_cancel_orders([o.client_order_id for o in self.active_orders if o.status not in ['CANCELLING']])
+            cancel_by = self.cancel_by 
+            self.market_connector.bulk_cancel_orders([o.client_order_id for o in self.active_orders if o.status not in ['CANCELLING']],
+                                                     by=cancel_by)
         else:
             for order in self.active_orders:
                 self.cancel_order(self.market, order.client_order_id)
