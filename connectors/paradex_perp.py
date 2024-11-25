@@ -143,15 +143,36 @@ class ParadexPerpConnector(ConnectorBase):
         hash_object = hashlib.sha256(current_time.encode())
         return hash_object.hexdigest()
 
-    def cancel_order(self, client_order_id):
+    def cancel_order(self, client_order_id, by="exchange_order_id"):
         """
         Cancel an order by its client ID.
 
         Args:
             client_order_id (str): The client order ID to cancel.
-        """
+            by (str): 'exchange_order_id' or 'client_order_id'; which endpoint to use for cancellation
+        """            
+        cancel_via_client_order_id = self.paradex.api_client.cancel_order_by_client_id
+        if by == 'client_order_id':
+            cancel_method = cancel_via_client_order_id
+            oid = client_order_id 
+        else:
+            if by != 'exchange_order_id':
+                self.logger.warning(f"{by=} is none of 'exchange_order_id' nor 'client_order_id', defaulting to 'exchange_order_id'")
+            cancel_method = self.paradex.api_client.cancel_order
+            order_to_cancel = self.active_orders[client_order_id]
+            exchange_order_id =  order_to_cancel.exchange_order_id 
+            if exchange_order_id is None:
+                self.logger.warning(f"{client_order_id=}, {order_to_cancel} does not have exchange_order_id assigned, will revert back to canceling by 'client_order_id'")
+                cancel_method = cancel_via_client_order_id
+                oid = client_order_id
+            else:
+                oid = exchange_order_id 
         try:
+<<<<<<< HEAD
             self.rate_limited_request(self.paradex.api_client.cancel_order_by_client_id, client_order_id)
+=======
+            resp = self.rate_limited_request(cancel_method, oid)
+>>>>>>> cancelByExchangeId
             self.active_orders[client_order_id].status = 'CANCELLING'
         except ValidationError as ve:
             if ve.data['message'] == 'rate limit exceeded':
@@ -210,8 +231,16 @@ class ParadexPerpConnector(ConnectorBase):
                 else:
                     self.logger.error(f"fetch order failed: {e}")
 
+    def cancel_all_orders(self, mkt):
+        """
+        Cancel all orders, leverages backend improvement of DELETE /orders since v1.69.0
 
-    def bulk_cancel_orders(self, orders):
+        Args:
+            mkt (str): The market symbol.
+        """
+        self.rate_limited_request(self.paradex.api_client.cancel_all_orders, {"market":mkt})
+
+    def bulk_cancel_orders(self, orders, by="exchange_order_id"):
         """
         Cancel multiple orders.
 
@@ -219,7 +248,7 @@ class ParadexPerpConnector(ConnectorBase):
             orders (list): A list of order IDs to cancel.
         """
         for order in orders:
-            self.cancel_order(order)
+            self.cancel_order(order, by=by)
 
     def bulk_insert_orders(self, orders):
         """
@@ -346,10 +375,16 @@ class ParadexPerpConnector(ConnectorBase):
             return
 
         _market = _data['market']
+<<<<<<< HEAD
         _order = self.active_orders[_data['client_id']]
         if _order.exchange_order_id is None:
             _order.exchange_order_id = _data['id']
 
+=======
+        exchange_order_id = _data.get('id',None)
+        if exchange_order_id is not None:
+            self.active_orders[_data['client_id']].exchange_order_id = exchange_order_id
+>>>>>>> cancelByExchangeId
         if _data['status'] == 'NEW':
             self.active_orders[_data['client_id']].status = 'NEW'
             if _market in self._trade_callbacks:
