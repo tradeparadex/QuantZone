@@ -175,6 +175,8 @@ class PerpMarketMaker:
     PARAM_PREMIUM_FACTOR = "premium_factor"
     PARAM_PREMIUM_WINDOW_SIZE_SEC = "premium_window_size_sec"
     PARAM_PREMIUM_ADJUSTMENT_CAP = "premium_adjustment_cap"
+    PARAM_CANCEL_BY_EXCHANGE_ORDER_ID = "cancel_by_exchange_order_id"
+    PARAM_ORDER_RATIO_TO_CANCEL_ALL = "order_ratio_to_cancel_all"
 
     def __init__(self, loop: asyncio.AbstractEventLoop, 
             rm: RiskManager=RiskManager, 
@@ -271,6 +273,8 @@ class PerpMarketMaker:
             Param(self.PARAM_PREMIUM_FACTOR, '0', D),
             Param(self.PARAM_PREMIUM_WINDOW_SIZE_SEC, '1800', float),
             Param(self.PARAM_PREMIUM_ADJUSTMENT_CAP, '0.001', D),
+            Param(self.PARAM_CANCEL_BY_EXCHANGE_ORDER_ID, 'True', bool),
+            Param(self.PARAM_ORDER_RATIO_TO_CANCEL_ALL, "0.5", D),
         ]
 
         self._metrics_pub = mp()
@@ -510,6 +514,19 @@ class PerpMarketMaker:
     def market_is_swap(self) -> bool:
         pattern = re.compile(r'^[A-Z]+-[A-Z]+-PERP$', re.IGNORECASE)
         return bool(pattern.match(self.market))
+    
+    @property 
+    def cancel_by(self) -> str:
+        by_exchange_order_id = self._params_manager.get_param_value(self.PARAM_CANCEL_BY_EXCHANGE_ORDER_ID)
+        if by_exchange_order_id or by_exchange_order_id is None:
+            order_identifier = "exchange_order_id"
+        else:
+            order_identifier = "client_order_id"
+        return order_identifier
+    
+    @property 
+    def order_ratio_to_cancel_all(self) -> D:
+        return self._params_manager.get_param_value(self.PARAM_ORDER_RATIO_TO_CANCEL_ALL)
 
     def get_order_amount(self, price: D = None) -> D:
         if price is None:
@@ -655,13 +672,13 @@ class PerpMarketMaker:
         if not price.is_finite():
             price = self._smoothen_spot_price.value
         
+        ids_to_cancel = []
+        info_template = f"Order is below minimum spread ({self.minimum_spread}). Canceling Order "+"{} below min spread."
         for order in self.active_orders:
             negation = -1 if order.side == Side.BUY else 1
             if (negation * (order.price - price) / price) < self.minimum_spread / 2:
-                self.logger.info(f"Order is below minimum spread ({self.minimum_spread})."
-                                   f" Canceling Order: {order}")
-                self.cancel_order(self.market, order.client_order_id)
-                self.logger.info(f"Canceling order {order.client_order_id} below min spread.")
+                ids_to_cancel.append(order.client_order_id)
+        self.cancel_multiple_orders(ids_to_cancel, info_template=info_template)
     
     def cancel_active_orders(self, proposal: Proposal) -> None:
         """
@@ -713,10 +730,10 @@ class PerpMarketMaker:
 
             buy_ids_to_cancel = [active_buy_ids[idx] for idx in buys_to_cancel]
             sell_ids_to_cancel = [active_sell_ids[idx] for idx in sells_to_cancel]
-            
-            for id in buy_ids_to_cancel + sell_ids_to_cancel:
-                self.cancel_order(self.market, id)
-                self.logger.info(f"(z) Canceling order {id} outside of tolerance.")
+
+            ids_to_cancel = buy_ids_to_cancel + sell_ids_to_cancel
+            info_template = "(z) Canceling order {} outside of tolerance."
+            self.cancel_multiple_orders(ids_to_cancel, info_template=info_template)
         else:
             self.logger.info(f"Not canceling active orders since difference between new order prices "
                                f"and current order prices is within "
@@ -908,18 +925,52 @@ class PerpMarketMaker:
             self.processing = False
 
 
-    def cancel_order(self, mkt: str, order_id: str) -> None:
+    def cancel_order(self, mkt: str, client_order_id: str, info_template: Union[None, str] = None) -> None:
         """
-        Cancel an order by its client order ID.
+        Cancel an order by its client order ID. Which endpoint to use at the exchange side is set by 'PARAM_CANCEL_BY_EXCHANGE_ORDER_ID' 
         """
-        self.market_connector.cancel_order(order_id)
+        cancel_by = self.cancel_by 
+        self.market_connector.cancel_order(client_order_id, by=cancel_by)
+        if info_template is not None: 
+            self.logger.info(info_template.format(client_order_id))
+
+    def cancel_multiple_orders(self, client_order_ids: List[str], info_template : Union[None, str] = None) -> None:
+        """
+        Cancel a list of orders. If the (# ordersToCancel) / (# activeOrders) > PARAM_ORDER_RATIO_TO_CANCEL_ALL, then will cancel all.
+        """
+        n_orders_to_cancel = len(client_order_ids)
+        if n_orders_to_cancel == 0:
+            self.logger.warning(f"Got passed an empty client_order_ids, do nothing and return None")
+            return 
+        
+        n_active_orders = len(self.active_orders) 
+        
+        cancel_all = False
+        inform = True  
+        order_ratio_to_cancel_all = self.order_ratio_to_cancel_all
+        if n_active_orders > 0:
+            cancel_ratio = n_orders_to_cancel / n_active_orders
+            if abs(cancel_ratio - 1) < 1e-10: # wanted to cancel all anyway
+                inform = False  
+            cancel_all = (cancel_ratio > order_ratio_to_cancel_all)
+        
+        if cancel_all:
+            if inform:
+                self.logger.info(f"Canceling {n_orders_to_cancel} out of {n_active_orders} active, which is > {order_ratio_to_cancel_all}, will just cancel all")
+            if info_template is not None:
+                active_coids = [order.client_order_id for order in self.active_orders]
+                self.logger.info(info_template.format(active_coids))
+            self.cancel_all_orders()
+        else:
+            for coid in client_order_ids:
+                self.cancel_order(self.market, coid, info_template=info_template)
 
     def cancel_all_orders(self) -> None:
         """
         Cancel all active orders.
         """
         if self.bulk_requests:
-            self.market_connector.bulk_cancel_orders([o.client_order_id for o in self.active_orders if o.status not in ['CANCELLING']])
+            self.market_connector.cancel_all_orders(self.market)
         else:
             for order in self.active_orders:
                 self.cancel_order(self.market, order.client_order_id)
