@@ -227,6 +227,14 @@ class ParadexPerpConnector(ConnectorBase):
                 else:
                     self.logger.error(f"fetch order failed: {e}")
 
+    def cancel_all_orders(self, mkt):
+        """
+        Cancel all orders, leverages backend improvement of DELETE /orders since v1.69.0
+
+        Args:
+            mkt (str): The market symbol.
+        """
+        self.rate_limited_request(self.paradex.api_client.cancel_all_orders, {"market":mkt})
 
     def bulk_cancel_orders(self, orders, by="exchange_order_id"):
         """
