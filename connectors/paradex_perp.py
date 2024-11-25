@@ -168,11 +168,7 @@ class ParadexPerpConnector(ConnectorBase):
             else:
                 oid = exchange_order_id 
         try:
-<<<<<<< HEAD
-            self.rate_limited_request(self.paradex.api_client.cancel_order_by_client_id, client_order_id)
-=======
             resp = self.rate_limited_request(cancel_method, oid)
->>>>>>> cancelByExchangeId
             self.active_orders[client_order_id].status = 'CANCELLING'
         except ValidationError as ve:
             if ve.data['message'] == 'rate limit exceeded':
@@ -375,16 +371,10 @@ class ParadexPerpConnector(ConnectorBase):
             return
 
         _market = _data['market']
-<<<<<<< HEAD
         _order = self.active_orders[_data['client_id']]
         if _order.exchange_order_id is None:
             _order.exchange_order_id = _data['id']
 
-=======
-        exchange_order_id = _data.get('id',None)
-        if exchange_order_id is not None:
-            self.active_orders[_data['client_id']].exchange_order_id = exchange_order_id
->>>>>>> cancelByExchangeId
         if _data['status'] == 'NEW':
             self.active_orders[_data['client_id']].status = 'NEW'
             if _market in self._trade_callbacks:
