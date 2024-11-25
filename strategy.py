@@ -175,6 +175,8 @@ class PerpMarketMaker:
     PARAM_PREMIUM_FACTOR = "premium_factor"
     PARAM_PREMIUM_WINDOW_SIZE_SEC = "premium_window_size_sec"
     PARAM_PREMIUM_ADJUSTMENT_CAP = "premium_adjustment_cap"
+    PARAM_TAKE_PROFIT_BPS = "take_profit_bps"
+    PARAM_TAKE_PROFIT_DECAY_FACTOR = "take_profit_decay_factor_sec"
 
     def __init__(self, loop: asyncio.AbstractEventLoop, 
             rm: RiskManager=RiskManager, 
@@ -271,6 +273,8 @@ class PerpMarketMaker:
             Param(self.PARAM_PREMIUM_FACTOR, '0', D),
             Param(self.PARAM_PREMIUM_WINDOW_SIZE_SEC, '1800', float),
             Param(self.PARAM_PREMIUM_ADJUSTMENT_CAP, '0.001', D),
+            Param(self.PARAM_TAKE_PROFIT_BPS, '0', D),
+            Param(self.PARAM_TAKE_PROFIT_DECAY_FACTOR, '60', D),
         ]
 
         self._metrics_pub = mp()
@@ -287,6 +291,14 @@ class PerpMarketMaker:
     @property
     def is_enabled(self):
         return self._params_manager.get_param_value(self.PARAM_ENABLED)
+
+    @property
+    def take_profit_bps(self) -> D:
+        return self._params_manager.get_param_value(self.PARAM_TAKE_PROFIT_BPS)
+    
+    @property
+    def take_profit_decay_factor_sec(self) -> D:
+        return self._params_manager.get_param_value(self.PARAM_TAKE_PROFIT_DECAY_FACTOR)
 
     @property
     def publish_order_latency(self) -> bool:
@@ -1101,6 +1113,7 @@ class PerpMarketMaker:
             else: 
                 final_fair = fair
 
+
         elif side == Side.BUY:
             if market_bid is None or not market_bid.is_finite():
                 self.logger.warning("Market bid is not finite. Widen more.")
@@ -1111,6 +1124,32 @@ class PerpMarketMaker:
         else:
             final_fair = fair
     
+        if self.take_profit_bps > 0:
+            avg_entry_price = self.market_connector.get_avg_entry_price(self.market)
+            if avg_entry_price:
+                time_since_entry_sec = (self.now_ms() - int(self.market_connector.positions[self.market]['last_fill_id'][0:13])) / 1000
+                # Ensure time_since_entry_sec is non-negative
+                time_since_entry_sec = max(time_since_entry_sec, 0)
+                # Linear decay factor between 0 and 1
+                decay_factor = min(D(time_since_entry_sec) / self.take_profit_decay_factor_sec, 1)
+                self.logger.info(f"take_profit avg_entry_price: {avg_entry_price}, time_since_entry_sec: {time_since_entry_sec}, decay_factor: {decay_factor}")
+                
+                if cur_pos > 0 and side == Side.SELL:
+                    # Calculate initial take-profit price for a long position
+                    initial_take_profit_price = avg_entry_price * (1 - self.take_profit_bps / 10000)
+                    # Apply decay towards final_fair
+                    take_profit_price = initial_take_profit_price + decay_factor * (final_fair - initial_take_profit_price)
+                    self.logger.info(f"{side} take_profit_price: {take_profit_price} vs final_fair: {final_fair}")
+                    final_fair = max(final_fair, take_profit_price)
+                    
+                elif cur_pos < 0 and side == Side.BUY:
+                    # Calculate initial take-profit price for a short position
+                    initial_take_profit_price = avg_entry_price * (1 + self.take_profit_bps / 10000)
+                    # Apply decay towards final_fair
+                    take_profit_price = initial_take_profit_price + decay_factor * (final_fair - initial_take_profit_price)
+                    self.logger.info(f"{side} take_profit_price: {take_profit_price} vs final_fair: {final_fair}")
+                    final_fair = min(final_fair, take_profit_price)
+
         return final_fair
 
     def get_premium_adjustment(self) -> D:
