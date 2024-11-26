@@ -744,7 +744,7 @@ class PerpMarketMaker:
             sell_ids_to_cancel = [active_sell_ids[idx] for idx in sells_to_cancel]
 
             ids_to_cancel = buy_ids_to_cancel + sell_ids_to_cancel
-            info_template = "(z) Canceling order {} outside of tolerance."
+            info_template = "Canceling order {} outside of tolerance."
             self.cancel_multiple_orders(ids_to_cancel, info_template=info_template)
         else:
             self.logger.info(f"Not canceling active orders since difference between new order prices "
