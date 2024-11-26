@@ -13,7 +13,7 @@ import hashlib
 import os
 import time
 from decimal import Decimal as D
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, Optional
 
 import structlog
 from marshmallow.exceptions import ValidationError
@@ -23,17 +23,17 @@ from paradex_py.common.order import Order as ParadexOrder, OrderSide as ParadexO
 from paradex_py.environment import PROD, TESTNET
 from utils.api_utils import SyncRateLimiter
 from utils.data_methods import (
+    AccountInfo,
     ConnectorBase,
     Depth,
     Level,
     Order,
     OrderType,
+    Position,
     Side,
     Ticker,
     TradingRules,
     UpdateType,
-    Position,
-    AccountInfo
 )
 
 
@@ -103,7 +103,7 @@ class ParadexPerpConnector(ConnectorBase):
 
         self._order_counter = 0
 
-        self.rate_limiter = SyncRateLimiter(10) # X requests per second, adjust as needed
+        self.rate_limiter = SyncRateLimiter(int(os.getenv("PARADEX_RATE_LIMIT", "8"))) # X requests per second, adjust as needed
 
     def rate_limited_request(self, method: Callable, *args, **kwargs) -> Any:
         """
@@ -143,20 +143,36 @@ class ParadexPerpConnector(ConnectorBase):
         hash_object = hashlib.sha256(current_time.encode())
         return hash_object.hexdigest()
 
-    def cancel_order(self, client_order_id):
+    def cancel_order(self, client_order_id, by="exchange_order_id"):
         """
         Cancel an order by its client ID.
 
         Args:
             client_order_id (str): The client order ID to cancel.
-        """
+            by (str): 'exchange_order_id' or 'client_order_id'; which endpoint to use for cancellation
+        """            
+        cancel_via_client_order_id = self.paradex.api_client.cancel_order_by_client_id
+        if by == 'client_order_id':
+            cancel_method = cancel_via_client_order_id
+            oid = client_order_id 
+        else:
+            if by != 'exchange_order_id':
+                self.logger.warning(f"{by=} is none of 'exchange_order_id' nor 'client_order_id', defaulting to 'exchange_order_id'")
+            cancel_method = self.paradex.api_client.cancel_order
+            order_to_cancel = self.active_orders[client_order_id]
+            exchange_order_id =  order_to_cancel.exchange_order_id 
+            if exchange_order_id is None:
+                self.logger.warning(f"{client_order_id=}, {order_to_cancel} does not have exchange_order_id assigned, will revert back to canceling by 'client_order_id'")
+                cancel_method = cancel_via_client_order_id
+                oid = client_order_id
+            else:
+                oid = exchange_order_id 
         try:
-            resp = self.rate_limited_request(self.paradex.api_client.cancel_order_by_client_id, client_order_id)
+            resp = self.rate_limited_request(cancel_method, oid)
             self.active_orders[client_order_id].status = 'CANCELLING'
         except ValidationError as ve:
-            if 'Missing data for required field' in str(ve):
-                # This might indicate that the order doesn't exist
-                del self.active_orders[client_order_id]
+            if ve.data['message'] == 'rate limit exceeded':
+                self.logger.warning(f"rate limit exceeded")
             else:
                 self.logger.error(f"Unexpected validation error for order {client_order_id}: {ve}")
         except Exception as e:
@@ -191,17 +207,18 @@ class ParadexPerpConnector(ConnectorBase):
                     order_type=OrderType.LIMIT if po['type'] == 'LIMIT' else OrderType.MARKET
                 )
                 self.active_orders[po['client_id']].client_order_id = po['client_id']
+                self.active_orders[po['client_id']].exchange_order_id = po['id']
 
             self.process_order_update(po)
 
-        for ao in set(self.active_orders.keys()):
+        already_processed = [o['client_id'] for o in existing_orders]
+        for ao in set(self.active_orders.keys()) - set(already_processed):
             try:
                 po = self.rate_limited_request(self.paradex.api_client.fetch_order_by_client_id, ao)
                 self.process_order_update(po)
             except ValidationError as ve:
-                if 'Missing data for required field' in str(ve):
-                    # This might indicate that the order doesn't exist
-                    del self.active_orders[ao]
+                if ve.data['message'] == 'rate limit exceeded':
+                    self.logger.warning(f"rate limit exceeded")
                 else:
                     self.logger.error(f"Unexpected validation error for order {ao}: {ve}")
             except Exception as e:
@@ -210,8 +227,16 @@ class ParadexPerpConnector(ConnectorBase):
                 else:
                     self.logger.error(f"fetch order failed: {e}")
 
+    def cancel_all_orders(self, mkt):
+        """
+        Cancel all orders, leverages backend improvement of DELETE /orders since v1.69.0
 
-    def bulk_cancel_orders(self, orders):
+        Args:
+            mkt (str): The market symbol.
+        """
+        self.rate_limited_request(self.paradex.api_client.cancel_all_orders, {"market":mkt})
+
+    def bulk_cancel_orders(self, orders, by="exchange_order_id"):
         """
         Cancel multiple orders.
 
@@ -219,7 +244,7 @@ class ParadexPerpConnector(ConnectorBase):
             orders (list): A list of order IDs to cancel.
         """
         for order in orders:
-            self.cancel_order(order)
+            self.cancel_order(order, by=by)
 
     def bulk_insert_orders(self, orders):
         """
@@ -329,6 +354,7 @@ class ParadexPerpConnector(ConnectorBase):
         self.internal_positions[_market]['fill_id'] = _data['id']
         self.internal_positions[_market]['ts'] = _data['created_at']
         self.internal_positions[_market]['size'] += (D(_data['size']) * (-1 if _data['side'] == 'SELL' else 1))
+
         self.logger.info(f"fills current size: {self.internal_positions[_market]['size']}")
 
 
@@ -345,6 +371,10 @@ class ParadexPerpConnector(ConnectorBase):
             return
 
         _market = _data['market']
+        _order = self.active_orders[_data['client_id']]
+        if _order.exchange_order_id is None:
+            _order.exchange_order_id = _data['id']
+
         if _data['status'] == 'NEW':
             self.active_orders[_data['client_id']].status = 'NEW'
             if _market in self._trade_callbacks:
@@ -445,6 +475,11 @@ class ParadexPerpConnector(ConnectorBase):
         elif mkt in self.positions:
             return D(self.positions[mkt]['size'])
         return D(0)
+    
+    def get_avg_entry_price(self, mkt: str) -> Optional[D]:
+        if mkt in self.positions:
+            return D(self.positions[mkt]['average_entry_price'])
+        return None
 
     def get_positions(self) -> Dict[str, Position]:
         return {x: Position(x, D(self.positions[x]['size']), D(self.positions[x]['cost_usd']) + D(self.positions[x]['unrealized_pnl'])) for x in self.positions}
