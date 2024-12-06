@@ -6,6 +6,7 @@ from paradex_py.api.models import SystemConfig
 from paradex_py.environment import PROD
 from starknet_py.net.full_node_client import FullNodeClient
 from starknet_py.contract import Contract
+from starknet_py.net.client_models import TransactionTrace, InvokeTransactionTrace
 from pathlib import Path
 from dataclasses import dataclass
 import logging
@@ -25,6 +26,7 @@ class DataConfig:
     paraclear_contract: Contract = None
     usdc_contract: Contract = None
     oracle_contract: Contract = None
+    contract_map: Dict[int, Contract] = {}
 
     def mkdirs(self) -> None:
         self.base_dir.mkdir(exist_ok=True, parents=True)
@@ -51,6 +53,9 @@ class DataConfig:
         oracle_address = self.paradex_system_config.oracle_address
         oracle_contract = asyncio.run(Contract.from_address(address=oracle_address, provider=self.full_node_client(), proxy_config=True))
         self.oracle_contract = oracle_contract
+        self.contract_map[paraclear_contract.address] = paraclear_contract
+        self.contract_map[usdc_contract.address] = usdc_contract
+        self.contract_map[oracle_contract.address] = oracle_contract
 
 def unpack(results: Dict) -> List:
     """Unpack results"""
@@ -61,6 +66,12 @@ def block_timerange(data_config: DataConfig = DataConfig()) -> Tuple[int, int]:
     latest_block = asyncio.run(data_config.full_node_client().get_block_number())
     logger.info(f"Latest block: {latest_block}")
     return [1, latest_block]
+
+def process_block(data_config: DataConfig = DataConfig(), block_number: int = 1):
+    """Process a single block"""
+    # blockdata = asyncio.run(data_config.full_node_client().trace_block_transactions(block_number))
+    # block_events = asyncio.run(data_config.full_node_client().get_events(block_number))
+
 
 def load_markets(data_config: DataConfig = DataConfig()):
     """Load markets data from Paradex API and save to parquet file"""
@@ -80,5 +91,7 @@ if __name__ == "__main__":
     )
     config = DataConfig()
     load_markets(config)
-    print(block_timerange(config))
+    block_range = block_timerange(config)
+    print(block_range)
     config.load_contracts()
+    process_block(config, block_range[-1])
