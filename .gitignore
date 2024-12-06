@@ -160,3 +160,5 @@ cython_debug/
 
 # Windows
 Thumbs.db
+
+data/paradex
