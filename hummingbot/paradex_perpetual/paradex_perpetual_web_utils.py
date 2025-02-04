@@ -51,14 +51,12 @@ def public_rest_url(*args, **kwargs) -> str:
 
 
 def rest_url(path_url: str, domain: str = "paradex_perpetual"):
-    base_url = CONSTANTS.PROD_BASE_URL if domain == CONSTANTS.DOMAIN else (
-        CONSTANTS.NIGHTLY_BASE_URL if domain == CONSTANTS.NIGHTLY_DOMAIN else CONSTANTS.TESTNET_BASE_URL)
+    base_url = CONSTANTS.PROD_BASE_URL if domain == CONSTANTS.DOMAIN else CONSTANTS.TESTNET_BASE_URL
     return base_url + path_url
 
 
 def wss_url(domain: str = "paradex_perpetual"):
-    base_ws_url = CONSTANTS.PROD_WS_URL if domain ==CONSTANTS.DOMAIN else (
-        CONSTANTS.NIGHTLY_WS_URL if domain == CONSTANTS.NIGHTLY_DOMAIN else CONSTANTS.TESTNET_WS_URL)
+    base_ws_url = CONSTANTS.PROD_WS_URL if domain ==CONSTANTS.DOMAIN else CONSTANTS.TESTNET_WS_URL
     return base_ws_url
 
 

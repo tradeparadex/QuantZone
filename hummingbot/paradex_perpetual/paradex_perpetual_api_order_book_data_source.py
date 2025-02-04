@@ -165,15 +165,16 @@ class ParadexPerpetualAPIOrderBookDataSource(PerpetualAPIOrderBookDataSource):
         return channel
 
     async def _parse_order_book_diff_message(self, raw_message: Dict[str, Any], message_queue: asyncio.Queue):
-        timestamp: float = raw_message["data"]["time"] * 1e-3
+        timestamp: float = raw_message["data"]["last_updated_at"] * 1e-3
         trading_pair = await self._connector.trading_pair_associated_to_exchange_symbol(
-            raw_message["data"]["coin"])
+            raw_message["data"]["market"])
         data = raw_message["data"]
+        all_updates = data['deletes'] + data['inserts'] + data['updates']
         order_book_message: OrderBookMessage = OrderBookMessage(OrderBookMessageType.DIFF, {
             "trading_pair": trading_pair,
-            "update_id": data["time"],
-            "bids": [[float(i['px']), float(i['sz'])] for i in data["levels"][0]],
-            "asks": [[float(i['px']), float(i['sz'])] for i in data["levels"][1]],
+            "update_id": data["seq_no"],
+            "bids": [[float(i['price']), float(i['size'])] for i in all_updates if i['side'] == "BUY"],
+            "asks": [[float(i['price']), float(i['size'])] for i in all_updates if i['side'] == "SELL"],
         }, timestamp=timestamp)
         message_queue.put_nowait(order_book_message)
 
