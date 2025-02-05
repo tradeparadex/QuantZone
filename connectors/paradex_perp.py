@@ -174,7 +174,7 @@ class ParadexPerpConnector(ConnectorBase):
             if ve.data['message'] == 'rate limit exceeded':
                 self.logger.warning(f"rate limit exceeded")
             else:
-                self.logger.error(f"Unexpected validation error for order {client_order_id}: {ve}")
+                self.logger.error(f"Unexpected validation error for order {client_order_id}: {ve.data}")
         except Exception as e:
             if e.args[0].error == 'CLIENT_ORDER_ID_NOT_FOUND':
                 del self.active_orders[client_order_id]
@@ -220,7 +220,7 @@ class ParadexPerpConnector(ConnectorBase):
                 if ve.data['message'] == 'rate limit exceeded':
                     self.logger.warning(f"rate limit exceeded")
                 else:
-                    self.logger.error(f"Unexpected validation error for order {ao}: {ve}")
+                    self.logger.error(f"Unexpected validation error for order {ao}: {ve.data}")
             except Exception as e:
                 if e.args[0].error == 'CLIENT_ORDER_ID_NOT_FOUND':
                     del self.active_orders[ao]
