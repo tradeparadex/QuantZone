@@ -13,11 +13,13 @@ import argparse
 import asyncio
 import logging
 import os
+import platform
 import signal
 import sys
 import traceback
 
 import structlog
+from dotenv import load_dotenv
 
 from pricer_perps import PerpPricer
 from strategy import PerpMarketMaker
@@ -94,20 +96,22 @@ def handle_exception(loop: asyncio.AbstractEventLoop, context: dict) -> None:
 
 
 async def main():
+    load_dotenv()
     loop = asyncio.get_running_loop()
     strategy = PerpMarketMaker(
         loop=loop, PricerClass=PerpPricer, config_path=args.config
     )
 
-    # Set up signal handlers
-    signals = (signal.SIGHUP, signal.SIGTERM, signal.SIGINT)
-    for s in signals:
-        loop.add_signal_handler(
-            s, lambda s=s: asyncio.create_task(shutdown(s, loop, strategy))
-        )
+    if platform.system() != "Windows":
+        # Set up signal handlers
+        signals = (signal.SIGHUP, signal.SIGTERM, signal.SIGINT)
+        for s in signals:
+            loop.add_signal_handler(
+                s, lambda s=s: asyncio.create_task(shutdown(s, loop, strategy))
+            )
 
-    # Set up exception handler
-    loop.set_exception_handler(handle_exception)
+        # Set up exception handler
+        loop.set_exception_handler(handle_exception)
 
     try:
         # Initialize and run your strategy

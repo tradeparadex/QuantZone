@@ -3,16 +3,20 @@ name = "quantzone"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.11"
 dependencies = [
     "marshmallow>=3.26.1",
     "numpy>=2.2.3",
     "pandas>=2.2.3",
+    "python-dotenv>=1.0.1",
     "ruamel-yaml>=0.18.10",
     "scipy>=1.15.2",
     "sortedcontainers>=2.4.0",
     "structlog>=25.1.0",
 ]
+
+[tool.uv]
+default-groups = ["exchange"]
 
 [dependency-groups]
 exchange = ["paradex-py>=0.4.3", "pybit>=5.9.0", "python-binance>=1.0.27"]
