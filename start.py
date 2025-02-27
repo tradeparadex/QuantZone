@@ -5,23 +5,27 @@ This module sets up logging, imports necessary dependencies,
 and initializes the perpetual futures market making strategy.
 It also handles graceful shutdown and exception handling.
 
-This is the place where you can define the overrides for the strategy; 
+This is the place where you can define the overrides for the strategy;
 pricer and the risk modules.
 """
-import logging
-import structlog
+
 import argparse
 import asyncio
+import logging
 import os
 import signal
-import traceback
 import sys
-from strategy import PerpMarketMaker
+import traceback
+
+import structlog
+
 from pricer_perps import PerpPricer
+from strategy import PerpMarketMaker
+
 
 # Configure structlog
 def configure_logging():
-    logging_level = os.environ.get('LOG_LEVEL', 'INFO').upper()
+    logging_level = os.environ.get("LOG_LEVEL", "INFO").upper()
     # Convert string level name to numeric value
     numeric_level = getattr(logging, logging_level, logging.INFO)
     # Define processors for structlog
@@ -35,7 +39,7 @@ def configure_logging():
             ]
         ),
         structlog.stdlib.add_log_level,
-        structlog.processors.TimeStamper(fmt='%Y-%m-%d %H:%M:%S.%f'),
+        structlog.processors.TimeStamper(fmt="%Y-%m-%d %H:%M:%S.%f"),
         structlog.processors.StackInfoRenderer(),
         structlog.processors.format_exc_info,
         structlog.dev.ConsoleRenderer(),  # Use ConsoleRenderer for pretty output
@@ -57,15 +61,18 @@ def configure_logging():
         level=numeric_level,
     )
 
+
 configure_logging()
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--config', default='strategy_settings.yaml')
+parser.add_argument("--config", default="strategy_settings.yaml")
 args = parser.parse_args()
 
 
-async def shutdown(signal: signal.Signals, loop: asyncio.AbstractEventLoop, my_process: PerpMarketMaker) -> None:
+async def shutdown(
+    signal: signal.Signals, loop: asyncio.AbstractEventLoop, my_process: PerpMarketMaker
+) -> None:
     """
     Shutdown the strategy gracefully.
     """
@@ -77,6 +84,7 @@ async def shutdown(signal: signal.Signals, loop: asyncio.AbstractEventLoop, my_p
     await asyncio.gather(*tasks, return_exceptions=True)
     loop.stop()
 
+
 def handle_exception(loop: asyncio.AbstractEventLoop, context: dict) -> None:
     """
     Handle exceptions that are not handled in tasks.
@@ -86,12 +94,9 @@ def handle_exception(loop: asyncio.AbstractEventLoop, context: dict) -> None:
 
 
 async def main():
-
-    loop=asyncio.get_running_loop()
+    loop = asyncio.get_running_loop()
     strategy = PerpMarketMaker(
-        loop=loop, 
-        PricerClass=PerpPricer,
-        config_path=args.config
+        loop=loop, PricerClass=PerpPricer, config_path=args.config
     )
 
     # Set up signal handlers
@@ -115,8 +120,8 @@ async def main():
             strategy.stop()
         except Exception as stop_error:
             strategy.logger.error(f"Error stopping strategy: {stop_error}")
-        return 1 
+        return 1
+
 
 if __name__ == "__main__":
     sys.exit(asyncio.run(main()))
-
