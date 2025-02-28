@@ -90,7 +90,7 @@ def handle_exception(loop: asyncio.AbstractEventLoop, context: dict) -> None:
 
 
 async def main():
-    load_dotenv()
+    load_dotenv(override=True)
     loop = asyncio.get_running_loop()
     strategy = PerpMarketMaker(loop=loop, PricerClass=PerpPricer, config_path=args.config)
 
