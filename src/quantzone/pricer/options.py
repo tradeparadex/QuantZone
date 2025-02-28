@@ -6,13 +6,16 @@ buy and sell orders.
 """
 
 from decimal import Decimal as D
+from typing import Literal
 
 import numpy as np
 import structlog
 from scipy.stats import norm
 
 from ..utils.data_methods import Side
-from .pricer_base import PricerBase, RawFairPrice
+from .base import PricerBase, RawFairPrice
+
+OptionType = Literal["call", "put"]
 
 
 class OptionPricer(PricerBase):
@@ -60,7 +63,7 @@ class OptionPricer(PricerBase):
             spot_price, float(strike_price), float(self.iv), float(funding_period_years), self.option_type
         )
 
-        return RawFairPrice(fair=fair_price, base=fair_price)
+        return RawFairPrice(fair=D(fair_price), base=D(fair_price))
 
     @property
     def option_type(self):
@@ -74,31 +77,22 @@ class OptionPricer(PricerBase):
     def time_to_expiry(self):
         return D("0.01")
 
-    def option_instrinsic_value(self, S: float, K: float, option_type: str):
+    def instrinsic_value(self, S: float, K: float, option_type: OptionType):
         assert option_type in ["call", "put"]
-        if option_type == "call":
-            return max(0, S - K)
-        else:
-            return max(0, K - S)
+        return max(0.0, S - K) if option_type == "call" else max(0.0, K - S)
 
-    def perp_bs_price(self, S: float, K: float, sigma: float, funding_period_years: float, option_type: str):
+    def perp_bs_price(self, S: float, K: float, sigma: float, funding_period_years: float, option_type: OptionType):
         breakpoint()
-        return self.option_instrinsic_value(S, K, option_type) + self.perp_bs_time_value(
-            S, K, sigma, funding_period_years
-        )
+        return self.instrinsic_value(S, K, option_type) + self.perp_bs_time_value(S, K, sigma, funding_period_years)
 
     def perp_bs_time_value(self, S: float, K: float, sigma: float, funding_period_years: float):
         assert sigma >= 0
         if sigma == 0:
             return 0
-        else:
-            u = np.sqrt(1 + 8 / (sigma * sigma * funding_period_years))
-            if S >= K:
-                return (K / u) * (S / K) ** (-(u - 1) / 2)
-            else:
-                return (K / u) * (S / K) ** ((u + 1) / 2)
+        u = np.sqrt(1 + 8 / (sigma * sigma * funding_period_years))
+        return (K / u) * (S / K) ** (-(u - 1) / 2) if S >= K else (K / u) * (S / K) ** ((u + 1) / 2)
 
-    def black_scholes(self, S: D, K: D, T: D, r: D, sigma: D, is_call: bool) -> D:
+    def black_scholes(self, S: float, K: float, T: float, r: float, sigma: float, option_type: OptionType) -> D:  # noqa: PLR0913
         """
         Calculate the option price using the Black-Scholes model.
 
@@ -113,13 +107,12 @@ class OptionPricer(PricerBase):
         Returns:
             Decimal: The calculated option price
         """
-        d1 = (D(np.log(S / K)) + (r + sigma**2 / 2) * T) / (sigma * np.sqrt(T))
+        d1 = (np.log(S / K) + (r + sigma**2 / 2) * T) / (sigma * np.sqrt(T))
         d2 = d1 - sigma * np.sqrt(T)
 
-        if is_call:
-            option_price = S * D(norm.cdf(float(d1))) - K * np.exp(-r * T) * D(norm.cdf(float(d2)))
-        else:
-            option_price = K * np.exp(-r * T) * D(norm.cdf(-float(d2))) - S * D(norm.cdf(-float(d1)))
+        if option_type == "call":
+            option_price = S * norm.cdf(float(d1)) - K * np.exp(-r * T) * norm.cdf(float(d2))
+        option_price = K * np.exp(-r * T) * norm.cdf(-float(d2)) - S * norm.cdf(-float(d1))
 
         return D(str(option_price))
 

@@ -65,7 +65,7 @@ import structlog
 
 from .connectors.base_connector import get_connector
 from .connectors.connector_base import ConnectorBase
-from .pricer.pricer_base import PricerBase
+from .pricer.base import PricerBase
 from .utils.async_utils import safe_ensure_future
 from .utils.data_methods import (
     Order,
@@ -146,6 +146,7 @@ class PerpMarketMaker:
     PARAM_ORDER_RATIO_TO_CANCEL_ALL = "order_ratio_to_cancel_all"
 
     _reeval_task: asyncio.Future | None
+    already_tracked_orders: set[str]
 
     def __init__(
         self,
@@ -514,7 +515,27 @@ class PerpMarketMaker:
     def order_ratio_to_cancel_all(self) -> D:
         return self._params_manager.get_param_value(self.PARAM_ORDER_RATIO_TO_CANCEL_ALL)
 
-    def get_order_amount(self, price: D = None) -> D:
+    @property
+    def factored_basis(self) -> D:
+        """
+        Calculate the factored basis value.
+
+        Returns:
+            Decimal: The factored basis value.
+        """
+        return self._smoothen_basis.value * self.pricing_basis_factor
+
+    @property
+    def factored_fr(self) -> D:
+        """
+        Calculate the factored funding rate value.
+
+        Returns:
+            Decimal: The factored funding rate value.
+        """
+        return self._smoothen_funding_rate.value * self.pricing_funding_rate_factor
+
+    def get_order_amount(self, price: D | None = None) -> D:
         if price is None:
             return self.order_amount
         return self.order_amount_usd / price
@@ -1313,6 +1334,7 @@ class PerpMarketMaker:
             self._reeval_task = safe_ensure_future(self.reeval(TriggerType.MARKET_DATA))
 
     def on_trade(self, data: Order, update_type: UpdateType) -> None:
+        assert data.client_order_id is not None
         if self.publish_order_latency:
             if data.status == "NEW":
                 try:

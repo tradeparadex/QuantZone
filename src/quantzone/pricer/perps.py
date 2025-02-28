@@ -8,8 +8,9 @@ pricing for buy and sell orders.
 from decimal import Decimal as D
 
 import structlog
-from strategy import PricerBase, RawFairPrice
-from utils.data_methods import PriceType, Side
+
+from ..utils.data_methods import PriceType, Side
+from .base import PricerBase, RawFairPrice
 
 
 class PerpPricer(PricerBase):
@@ -48,11 +49,10 @@ class PerpPricer(PricerBase):
         raw_spot_ema = self.strategy._smoothen_spot_price.value
 
         if raw_spot is None or not raw_spot.is_finite():
-            if self.strategy.use_anchor_price:
-                raw_spot = self.strategy.anchor_price
-                raw_spot_ema = self.strategy.anchor_price
-            else:
-                return None
+            if not self.strategy.use_anchor_price:
+                raise ValueError("Invalid raw spot price")
+            raw_spot = self.strategy.anchor_price
+            raw_spot_ema = self.strategy.anchor_price
 
         self.logger.debug(f"raw_spot: {raw_spot}, raw_spot_ema: {raw_spot_ema}")
 
@@ -63,32 +63,12 @@ class PerpPricer(PricerBase):
         else:
             fair = raw_spot_ema
 
-        capped_basis = self.cap_values(self.factored_basis, -D(0.05), D(0.05))
-        capped_fr = self.cap_values(self.factored_fr, -D(0.05), D(0.05))
+        capped_basis = self.cap_values(self.strategy.factored_basis, -D(0.05), D(0.05))
+        capped_fr = self.cap_values(self.strategy.factored_fr, -D(0.05), D(0.05))
 
         fair += raw_spot_ema * (capped_basis - capped_fr)
 
         return RawFairPrice(fair=fair, base=raw_spot_ema)
-
-    @property
-    def factored_basis(self) -> D:
-        """
-        Calculate the factored basis value.
-
-        Returns:
-            Decimal: The factored basis value.
-        """
-        return self.strategy._smoothen_basis.value * self.strategy.pricing_basis_factor
-
-    @property
-    def factored_fr(self) -> D:
-        """
-        Calculate the factored funding rate value.
-
-        Returns:
-            Decimal: The factored funding rate value.
-        """
-        return self.strategy._smoothen_funding_rate.value * self.strategy.pricing_funding_rate_factor
 
     @staticmethod
     def cap_values(val: D, min_val: D, max_val: D) -> D:
@@ -117,5 +97,5 @@ class PerpPricer(PricerBase):
         self.strategy._publish_strat_metric("volatility_adj", self.strategy.get_vol_adjustment())
         self.strategy._publish_strat_metric("price_adjustment", self.strategy.price_adjustment)
         self.strategy._publish_strat_metric("spread_adj", self.strategy.ask_spread + self.strategy.bid_spread)
-        self.strategy._publish_strat_metric("basis_adj", self.factored_basis)
-        self.strategy._publish_strat_metric("fr_adj", -self.factored_fr)
+        self.strategy._publish_strat_metric("basis_adj", self.strategy.factored_basis)
+        self.strategy._publish_strat_metric("fr_adj", -self.strategy.factored_fr)

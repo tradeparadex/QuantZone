@@ -21,7 +21,7 @@ import traceback
 import structlog
 from dotenv import load_dotenv
 
-from quantzone.pricer.pricer_perps import PerpPricer
+from quantzone.pricer.perps import PerpPricer
 from quantzone.strategy import PerpMarketMaker
 
 
