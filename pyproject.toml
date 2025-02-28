@@ -3,20 +3,58 @@ name = "quantzone"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 dependencies = [
+    "binance>=0.3",
+    "hummingbot>=20240714",
     "marshmallow>=3.26.1",
-    "numpy>=2.2.3",
+    "numpy==1.26.4",
     "pandas>=2.2.3",
     "python-dotenv>=1.0.1",
     "ruamel-yaml>=0.18.10",
     "scipy>=1.15.2",
     "sortedcontainers>=2.4.0",
+    "sortedcontainers-stubs>=2.4.2",
     "structlog>=25.1.0",
+    "paradex-py>=0.4.3",
+    "pybit>=5.9.0",
+    "python-binance>=1.0.27",
 ]
 
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [tool.uv]
-default-groups = ["exchange"]
+default-groups = []
 
 [dependency-groups]
-exchange = ["paradex-py>=0.4.3", "pybit>=5.9.0", "python-binance>=1.0.27"]
+dev = ["mypy>=1.15.0", "pyright>=1.1.395", "pytest>=8.3.4"]
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+check_untyped_defs = true
+disallow_untyped_defs = false
+
+[[tool.mypy.overrides]]
+module = [
+    "pybit.*",
+    "paradex_py.*",
+    "python_binance.*",
+    "hummingbot.*",
+    "binance.*",
+]
+ignore_errors = true
+ignore_missing_imports = true
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "PL", "RUF", "NPY", "PD", "UP"]
+extend-select = ["E501"]
+
+[tool.ruff.format]
+skip-magic-trailing-comma = true

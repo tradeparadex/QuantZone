@@ -1,7 +1,7 @@
-from dataclasses import dataclass, asdict
-from typing import List
-from starknet_py.cairo.felt import decode_shortstring, encode_shortstring
-from starknet_py.cairo.felt import FIELD_PRIME
+from dataclasses import asdict, dataclass
+
+from starknet_py.cairo.felt import FIELD_PRIME, decode_shortstring
+
 
 def as_int(value: int) -> int:
     """
@@ -9,7 +9,6 @@ def as_int(value: int) -> int:
     in the range (-prime/2, prime/2).
     """
     return value if value < FIELD_PRIME // 2 else value - FIELD_PRIME
-
 
 
 @dataclass
@@ -21,11 +20,12 @@ class TokenAssetBalance:
 
     def to_dict(self):
         d = asdict(self)
-        d['token_address'] = '0x' + hex(self.token_address)[2:].zfill(64)
-        d['amount'] = as_int(self.amount)
-        del d['prev']
-        del d['next']
+        d["token_address"] = "0x" + hex(self.token_address)[2:].zfill(64)
+        d["amount"] = as_int(self.amount)
+        del d["prev"]
+        del d["next"]
         return d
+
 
 @dataclass
 class PerpetualAssetBalance:
@@ -38,13 +38,14 @@ class PerpetualAssetBalance:
 
     def to_dict(self):
         d = asdict(self)
-        d['market'] = decode_shortstring(self.market)
-        d['amount'] = as_int(self.amount)
-        d['cost'] = as_int(self.cost)
-        d['cached_funding'] = as_int(self.cached_funding)
-        del d['prev']
-        del d['next']
+        d["market"] = decode_shortstring(self.market)
+        d["amount"] = as_int(self.amount)
+        d["cost"] = as_int(self.cost)
+        d["cached_funding"] = as_int(self.cached_funding)
+        del d["prev"]
+        del d["next"]
         return d
+
 
 @dataclass
 class PerpetualMarginParams:
@@ -55,11 +56,12 @@ class PerpetualMarginParams:
 
     def to_dict(self):
         d = asdict(self)
-        d['imf_base'] = as_int(self.imf_base)
-        d['imf_factor'] = as_int(self.imf_factor)
-        d['mmf_factor'] = as_int(self.mmf_factor)
-        d['imf_shift'] = as_int(self.imf_shift)
+        d["imf_base"] = as_int(self.imf_base)
+        d["imf_factor"] = as_int(self.imf_factor)
+        d["mmf_factor"] = as_int(self.mmf_factor)
+        d["imf_shift"] = as_int(self.imf_shift)
         return d
+
 
 @dataclass
 class PerpetualAsset:
@@ -71,9 +73,10 @@ class PerpetualAsset:
 
     def to_dict(self):
         d = asdict(self)
-        d['market'] = decode_shortstring(self.market)
-        d['margin_params'] = self.margin_params.to_dict()
+        d["market"] = decode_shortstring(self.market)
+        d["margin_params"] = self.margin_params.to_dict()
         return d
+
 
 @dataclass
 class PerpetualAssetBalanceDisplay:
@@ -84,11 +87,12 @@ class PerpetualAssetBalanceDisplay:
 
     def to_dict(self):
         d = asdict(self)
-        d['market'] = decode_shortstring(self.market)
-        d['amount'] = as_int(self.amount)
-        d['cost'] = as_int(self.cost)
-        d['cached_funding'] = as_int(self.cached_funding)
+        d["market"] = decode_shortstring(self.market)
+        d["amount"] = as_int(self.amount)
+        d["cost"] = as_int(self.cost)
+        d["cached_funding"] = as_int(self.cached_funding)
         return d
+
 
 @dataclass
 class PerpetualAssetBalanceV2:
@@ -101,13 +105,14 @@ class PerpetualAssetBalanceV2:
 
     def to_dict(self):
         d = asdict(self)
-        d['market'] = decode_shortstring(self.market)
-        d['amount'] = as_int(self.amount)
-        d['cost'] = as_int(self.cost)
-        d['cached_funding'] = as_int(self.cached_funding)
-        d['trade_size'] = as_int(self.trade_size)
-        d['trade_price'] = as_int(self.trade_price)
+        d["market"] = decode_shortstring(self.market)
+        d["amount"] = as_int(self.amount)
+        d["cost"] = as_int(self.cost)
+        d["cached_funding"] = as_int(self.cached_funding)
+        d["trade_size"] = as_int(self.trade_size)
+        d["trade_price"] = as_int(self.trade_price)
         return d
+
 
 @dataclass
 class Order:
@@ -121,10 +126,11 @@ class Order:
 
     def to_dict(self):
         d = asdict(self)
-        d['market'] = decode_shortstring(self.market)
-        d['size'] = as_int(self.size)
-        d['price'] = as_int(self.price)
+        d["market"] = decode_shortstring(self.market)
+        d["size"] = as_int(self.size)
+        d["price"] = as_int(self.price)
         return d
+
 
 @dataclass
 class TradeRequest:
@@ -138,12 +144,13 @@ class TradeRequest:
 
     def to_dict(self):
         d = asdict(self)
-        d['size'] = as_int(self.size)
-        d['price'] = as_int(self.price)
-        d['market_price'] = as_int(self.market_price)
-        d['maker_order'] = self.maker_order.to_dict()
-        d['taker_order'] = self.taker_order.to_dict()
+        d["size"] = as_int(self.size)
+        d["price"] = as_int(self.price)
+        d["market_price"] = as_int(self.market_price)
+        d["maker_order"] = self.maker_order.to_dict()
+        d["taker_order"] = self.taker_order.to_dict()
         return d
+
 
 @dataclass
 class FeeRate:
@@ -153,9 +160,10 @@ class FeeRate:
 
     def to_dict(self):
         d = asdict(self)
-        d['maker'] = as_int(self.maker)
-        d['taker'] = as_int(self.taker)
+        d["maker"] = as_int(self.maker)
+        d["taker"] = as_int(self.taker)
         return d
+
 
 @dataclass
 class TokenAsset:
@@ -168,9 +176,10 @@ class TokenAsset:
 
     def to_dict(self):
         d = asdict(self)
-        d['token_address'] = '0x' + hex(self.token_address)[2:].zfill(64)
-        d['token_name'] = decode_shortstring(self.token_name)
+        d["token_address"] = "0x" + hex(self.token_address)[2:].zfill(64)
+        d["token_name"] = decode_shortstring(self.token_name)
         return d
+
 
 @dataclass
 class Uint256:
@@ -179,9 +188,10 @@ class Uint256:
 
     def to_dict(self):
         d = asdict(self)
-        d['low'] = as_int(self.low)
-        d['high'] = as_int(self.high)
+        d["low"] = as_int(self.low)
+        d["high"] = as_int(self.high)
         return d
+
 
 @dataclass
 class FeeShare:
@@ -190,24 +200,26 @@ class FeeShare:
 
     def to_dict(self):
         d = asdict(self)
-        d['account'] = '0x' + hex(self.account)[2:].zfill(64)
-        d['fee'] = as_int(self.fee)
+        d["account"] = "0x" + hex(self.account)[2:].zfill(64)
+        d["fee"] = as_int(self.fee)
         return d
+
 
 @dataclass
 class AccountStateEmitted:
     account: int
     tokens_len: int
-    tokens: List[TokenAssetBalance]
+    tokens: list[TokenAssetBalance]
     synthetics_len: int
-    synthetics: List[PerpetualAssetBalance]
+    synthetics: list[PerpetualAssetBalance]
 
     def to_dict(self):
         d = asdict(self)
-        d['account'] = '0x' + hex(self.account)[2:].zfill(64)
-        d['tokens'] = [token.to_dict() for token in self.tokens]
-        d['synthetics'] = [synth.to_dict() for synth in self.synthetics]
+        d["account"] = "0x" + hex(self.account)[2:].zfill(64)
+        d["tokens"] = [token.to_dict() for token in self.tokens]
+        d["synthetics"] = [synth.to_dict() for synth in self.synthetics]
         return d
+
 
 @dataclass
 class AccountReferralUpdate:
@@ -218,11 +230,12 @@ class AccountReferralUpdate:
 
     def to_dict(self):
         d = asdict(self)
-        d['account'] = '0x' + hex(self.account)[2:].zfill(64)
-        d['referrer'] = '0x' + hex(self.referrer)[2:].zfill(64)
-        d['fee_commission'] = as_int(self.fee_commission)
-        d['fee_discount'] = as_int(self.fee_discount)
+        d["account"] = "0x" + hex(self.account)[2:].zfill(64)
+        d["referrer"] = "0x" + hex(self.referrer)[2:].zfill(64)
+        d["fee_commission"] = as_int(self.fee_commission)
+        d["fee_discount"] = as_int(self.fee_discount)
         return d
+
 
 @dataclass
 class FeeShareUpdate:
@@ -233,11 +246,12 @@ class FeeShareUpdate:
 
     def to_dict(self):
         d = asdict(self)
-        d['fee_share_account'] = '0x' + hex(self.fee_share_account)[2:].zfill(64)
-        d['fee_share_d'] = as_int(self.fee_share_d)
-        d['previous_fee_share_account'] = '0x' + hex(self.previous_fee_share_account)[2:].zfill(64)
-        d['previous_fee_share_d'] = as_int(self.previous_fee_share_d)
+        d["fee_share_account"] = "0x" + hex(self.fee_share_account)[2:].zfill(64)
+        d["fee_share_d"] = as_int(self.fee_share_d)
+        d["previous_fee_share_account"] = "0x" + hex(self.previous_fee_share_account)[2:].zfill(64)
+        d["previous_fee_share_d"] = as_int(self.previous_fee_share_d)
         return d
+
 
 @dataclass
 class TokenAssetBalanceUpdate:
@@ -249,11 +263,12 @@ class TokenAssetBalanceUpdate:
 
     def to_dict(self):
         d = asdict(self)
-        d['account'] = '0x' + hex(self.account)[2:].zfill(64)
-        d['token_address'] = '0x' + hex(self.token_address)[2:].zfill(64)
-        d['prev_amount'] = as_int(self.prev_amount)
-        d['updated_amount'] = as_int(self.updated_amount)
+        d["account"] = "0x" + hex(self.account)[2:].zfill(64)
+        d["token_address"] = "0x" + hex(self.token_address)[2:].zfill(64)
+        d["prev_amount"] = as_int(self.prev_amount)
+        d["updated_amount"] = as_int(self.updated_amount)
         return d
+
 
 @dataclass
 class RealizedFunding:
@@ -269,15 +284,16 @@ class RealizedFunding:
 
     def to_dict(self):
         d = asdict(self)
-        d['account'] = '0x' + hex(self.account)[2:].zfill(64)
-        d['market'] = decode_shortstring(self.market)
-        d['realized_funding'] = as_int(self.realized_funding)
-        d['balance_amount'] = as_int(self.balance_amount)
-        d['prev_funding'] = as_int(self.prev_funding)
-        d['current_funding'] = as_int(self.current_funding)
-        d['settlement_token_asset_price'] = as_int(self.settlement_token_asset_price)
-        d['trade_id'] = str(self.trade_id)
+        d["account"] = "0x" + hex(self.account)[2:].zfill(64)
+        d["market"] = decode_shortstring(self.market)
+        d["realized_funding"] = as_int(self.realized_funding)
+        d["balance_amount"] = as_int(self.balance_amount)
+        d["prev_funding"] = as_int(self.prev_funding)
+        d["current_funding"] = as_int(self.current_funding)
+        d["settlement_token_asset_price"] = as_int(self.settlement_token_asset_price)
+        d["trade_id"] = str(self.trade_id)
         return d
+
 
 @dataclass
 class RealizedPNL:
@@ -288,10 +304,11 @@ class RealizedPNL:
 
     def to_dict(self):
         d = asdict(self)
-        d['account'] = '0x' + hex(self.account)[2:].zfill(64)
-        d['realized_pnl'] = as_int(self.realized_pnl)
-        d['settlement_token_asset_price'] = as_int(self.settlement_token_asset_price)
+        d["account"] = "0x" + hex(self.account)[2:].zfill(64)
+        d["realized_pnl"] = as_int(self.realized_pnl)
+        d["settlement_token_asset_price"] = as_int(self.settlement_token_asset_price)
         return d
+
 
 @dataclass
 class AccountLiquidated:
@@ -307,15 +324,16 @@ class AccountLiquidated:
 
     def to_dict(self):
         d = asdict(self)
-        d['account'] = '0x' + hex(self.account)[2:].zfill(64)
-        d['liquidator'] = '0x' + hex(self.liquidator)[2:].zfill(64)
-        d['token_assets_value'] = as_int(self.token_assets_value)
-        d['margin_requirement'] = as_int(self.margin_requirement)
-        d['unrealized_pnl'] = as_int(self.unrealized_pnl)
-        d['liquidation_penalty'] = as_int(self.liquidation_penalty)
-        d['liquidation_share'] = as_int(self.liquidation_share)
-        d['oracle_snapshot_id'] = str(self.oracle_snapshot_id)
+        d["account"] = "0x" + hex(self.account)[2:].zfill(64)
+        d["liquidator"] = "0x" + hex(self.liquidator)[2:].zfill(64)
+        d["token_assets_value"] = as_int(self.token_assets_value)
+        d["margin_requirement"] = as_int(self.margin_requirement)
+        d["unrealized_pnl"] = as_int(self.unrealized_pnl)
+        d["liquidation_penalty"] = as_int(self.liquidation_penalty)
+        d["liquidation_share"] = as_int(self.liquidation_share)
+        d["oracle_snapshot_id"] = str(self.oracle_snapshot_id)
         return d
+
 
 @dataclass
 class Deposit:
@@ -325,10 +343,11 @@ class Deposit:
 
     def to_dict(self):
         d = asdict(self)
-        d['account'] = '0x' + hex(self.account)[2:].zfill(64)
-        d['token_address'] = '0x' + hex(self.token_address)[2:].zfill(64)
-        d['amount'] = as_int(self.amount)
+        d["account"] = "0x" + hex(self.account)[2:].zfill(64)
+        d["token_address"] = "0x" + hex(self.token_address)[2:].zfill(64)
+        d["amount"] = as_int(self.amount)
         return d
+
 
 @dataclass
 class Withdraw:
@@ -339,11 +358,12 @@ class Withdraw:
 
     def to_dict(self):
         d = asdict(self)
-        d['account'] = '0x' + hex(self.account)[2:].zfill(64)
-        d['token_address'] = '0x' + hex(self.token_address)[2:].zfill(64)
-        d['amount'] = as_int(self.amount)
-        d['socialized_loss_factor'] = as_int(self.socialized_loss_factor)
+        d["account"] = "0x" + hex(self.account)[2:].zfill(64)
+        d["token_address"] = "0x" + hex(self.token_address)[2:].zfill(64)
+        d["amount"] = as_int(self.amount)
+        d["socialized_loss_factor"] = as_int(self.socialized_loss_factor)
         return d
+
 
 @dataclass
 class Transfer:
@@ -354,11 +374,12 @@ class Transfer:
 
     def to_dict(self):
         d = asdict(self)
-        d['sender'] = '0x' + hex(self.sender)[2:].zfill(64)
-        d['recipient'] = '0x' + hex(self.recipient)[2:].zfill(64)
-        d['token_address'] = '0x' + hex(self.token_address)[2:].zfill(64)
-        d['amount'] = as_int(self.amount)
+        d["sender"] = "0x" + hex(self.sender)[2:].zfill(64)
+        d["recipient"] = "0x" + hex(self.recipient)[2:].zfill(64)
+        d["token_address"] = "0x" + hex(self.token_address)[2:].zfill(64)
+        d["amount"] = as_int(self.amount)
         return d
+
 
 @dataclass
 class AccountTransfer:
@@ -368,10 +389,11 @@ class AccountTransfer:
 
     def to_dict(self):
         d = asdict(self)
-        d['account'] = '0x' + hex(self.account)[2:].zfill(64)
-        d['receiver'] = '0x' + hex(self.receiver)[2:].zfill(64)
-        d['share'] = as_int(self.share)
+        d["account"] = "0x" + hex(self.account)[2:].zfill(64)
+        d["receiver"] = "0x" + hex(self.receiver)[2:].zfill(64)
+        d["share"] = as_int(self.share)
         return d
+
 
 @dataclass
 class PositionSettled:
@@ -383,11 +405,12 @@ class PositionSettled:
 
     def to_dict(self):
         d = asdict(self)
-        d['account'] = '0x' + hex(self.account)[2:].zfill(64)
-        d['market'] = decode_shortstring(self.market)
-        d['price'] = as_int(self.price)
-        d['size'] = as_int(self.size)
+        d["account"] = "0x" + hex(self.account)[2:].zfill(64)
+        d["market"] = decode_shortstring(self.market)
+        d["price"] = as_int(self.price)
+        d["size"] = as_int(self.size)
         return d
+
 
 @dataclass
 class SettleTradeFailed:
@@ -397,9 +420,10 @@ class SettleTradeFailed:
 
     def to_dict(self):
         d = asdict(self)
-        d['error_message'] = decode_shortstring(self.error_message)
-        d['trade'] = self.trade.to_dict()
+        d["error_message"] = decode_shortstring(self.error_message)
+        d["trade"] = self.trade.to_dict()
         return d
+
 
 @dataclass
 class LiquidationFailed:
@@ -409,9 +433,10 @@ class LiquidationFailed:
 
     def to_dict(self):
         d = asdict(self)
-        d['error_message'] = decode_shortstring(self.error_message)
-        d['account'] = '0x' + hex(self.account)[2:].zfill(64)
+        d["error_message"] = decode_shortstring(self.error_message)
+        d["account"] = "0x" + hex(self.account)[2:].zfill(64)
         return d
+
 
 @dataclass
 class RoleGranted:
@@ -421,9 +446,10 @@ class RoleGranted:
 
     def to_dict(self):
         d = asdict(self)
-        d['account'] = '0x' + hex(self.account)[2:].zfill(64)
-        d['sender'] = '0x' + hex(self.sender)[2:].zfill(64)
+        d["account"] = "0x" + hex(self.account)[2:].zfill(64)
+        d["sender"] = "0x" + hex(self.sender)[2:].zfill(64)
         return d
+
 
 @dataclass
 class RoleRevoked:
@@ -433,9 +459,10 @@ class RoleRevoked:
 
     def to_dict(self):
         d = asdict(self)
-        d['account'] = '0x' + hex(self.account)[2:].zfill(64)
-        d['sender'] = '0x' + hex(self.sender)[2:].zfill(64)
+        d["account"] = "0x" + hex(self.account)[2:].zfill(64)
+        d["sender"] = "0x" + hex(self.sender)[2:].zfill(64)
         return d
+
 
 @dataclass
 class RoleAdminChanged:
@@ -446,14 +473,16 @@ class RoleAdminChanged:
     def to_dict(self):
         return asdict(self)
 
+
 @dataclass
 class Upgraded:
     implementation: int
 
     def to_dict(self):
         d = asdict(self)
-        d['implementation'] = '0x' + hex(self.implementation)[2:].zfill(64)
+        d["implementation"] = "0x" + hex(self.implementation)[2:].zfill(64)
         return d
+
 
 @dataclass
 class AdminChanged:
@@ -462,9 +491,10 @@ class AdminChanged:
 
     def to_dict(self):
         d = asdict(self)
-        d['previousAdmin'] = '0x' + hex(self.previousAdmin)[2:].zfill(64)
-        d['newAdmin'] = '0x' + hex(self.newAdmin)[2:].zfill(64)
+        d["previousAdmin"] = "0x" + hex(self.previousAdmin)[2:].zfill(64)
+        d["newAdmin"] = "0x" + hex(self.newAdmin)[2:].zfill(64)
         return d
+
 
 @dataclass
 class TradeSettled:
@@ -475,11 +505,12 @@ class TradeSettled:
 
     def to_dict(self):
         d = asdict(self)
-        d['market'] = decode_shortstring(self.market)
-        d['price'] = as_int(self.price)
-        d['size'] = as_int(self.size)
-        d['trade_id'] = str(self.trade_id)
+        d["market"] = decode_shortstring(self.market)
+        d["price"] = as_int(self.price)
+        d["size"] = as_int(self.size)
+        d["trade_id"] = str(self.trade_id)
         return d
+
 
 @dataclass
 class PerpetualAssetUpdated:
@@ -487,8 +518,9 @@ class PerpetualAssetUpdated:
 
     def to_dict(self):
         d = asdict(self)
-        d['updated_asset'] = self.updated_asset.to_dict()
+        d["updated_asset"] = self.updated_asset.to_dict()
         return d
+
 
 @dataclass
 class PerpetualAssetBalanceUpdate:
@@ -498,12 +530,13 @@ class PerpetualAssetBalanceUpdate:
 
     def to_dict(self):
         d = asdict(self)
-        d['account'] = '0x' + hex(self.account)[2:].zfill(64)
+        d["account"] = "0x" + hex(self.account)[2:].zfill(64)
         if not isinstance(self.updated_asset_balance, PerpetualAssetBalanceDisplay):
             self.updated_asset_balance = PerpetualAssetBalanceDisplay(**self.updated_asset_balance)
-        d['updated_asset_balance'] = self.updated_asset_balance.to_dict()
-        d['trade_id'] = str(self.trade_id)
+        d["updated_asset_balance"] = self.updated_asset_balance.to_dict()
+        d["trade_id"] = str(self.trade_id)
         return d
+
 
 @dataclass
 class PerpetualAssetBalanceUpdateV2:
@@ -513,10 +546,11 @@ class PerpetualAssetBalanceUpdateV2:
 
     def to_dict(self):
         d = asdict(self)
-        d['account'] = '0x' + hex(self.account)[2:].zfill(64)
-        d['updated_asset_balance'] = self.updated_asset_balance.to_dict()
-        d['trade_id'] = str(self.trade_id)
+        d["account"] = "0x" + hex(self.account)[2:].zfill(64)
+        d["updated_asset_balance"] = self.updated_asset_balance.to_dict()
+        d["trade_id"] = str(self.trade_id)
         return d
+
 
 @dataclass
 class Fee:
@@ -525,6 +559,6 @@ class Fee:
 
     def to_dict(self):
         d = asdict(self)
-        d['account'] = '0x' + hex(self.account)[2:].zfill(64)
-        d['fee'] = as_int(self.fee)
+        d["account"] = "0x" + hex(self.account)[2:].zfill(64)
+        d["fee"] = as_int(self.fee)
         return d

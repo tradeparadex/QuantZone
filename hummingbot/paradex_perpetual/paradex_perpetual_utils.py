@@ -1,12 +1,8 @@
 from decimal import Decimal
-from typing import Optional
 
 from pydantic import Field, SecretStr
 
-from hummingbot.client.config.config_data_types import (
-    BaseConnectorConfigMap,
-    ClientFieldData,
-)
+from hummingbot.client.config.config_data_types import BaseConnectorConfigMap, ClientFieldData
 from hummingbot.core.data_type.trade_fee import TradeFeeSchema
 
 # Maker rebates(-0.02%) are paid out continuously on each trade directly to the trading wallet.(https://paradex.gitbook.io/paradex-docs/trading/fees)
@@ -21,7 +17,7 @@ EXAMPLE_PAIR = "BTC-USD"
 BROKER_ID = "HBOT"
 
 
-def validate_bool(value: str) -> Optional[str]:
+def validate_bool(value: str) -> str | None:
     """
     Permissively interpret a string as a boolean
     """
@@ -35,37 +31,25 @@ class ParadexPerpetualConfigMap(BaseConnectorConfigMap):
     paradex_perpetual_l1_address: SecretStr = Field(
         default=...,
         client_data=ClientFieldData(
-            prompt=lambda cm: "Enter your L1 Address",
-            is_secure=True,
-            is_connect_key=True,
-            prompt_on_new=True,
+            prompt=lambda cm: "Enter your L1 Address", is_secure=True, is_connect_key=True, prompt_on_new=True
         ),
     )
     paradex_perpetual_is_testnet: bool = Field(
         default="testing this",
         client_data=ClientFieldData(
-            prompt=lambda cm: "is_testnet",
-            is_secure=True,
-            is_connect_key=True,
-            prompt_on_new=True,
+            prompt=lambda cm: "is_testnet", is_secure=True, is_connect_key=True, prompt_on_new=True
         ),
     )
     paradex_perpetual_l1_private_key: SecretStr = Field(
         default=None,
         client_data=ClientFieldData(
-            prompt=lambda cm: "Enter your L1 private key",
-            is_secure=True,
-            is_connect_key=True,
-            prompt_on_new=True,
+            prompt=lambda cm: "Enter your L1 private key", is_secure=True, is_connect_key=True, prompt_on_new=True
         ),
     )
     paradex_perpetual_l2_private_key: SecretStr = Field(
         default=None,
         client_data=ClientFieldData(
-            prompt=lambda cm: "Enter your L2 private key",
-            is_secure=True,
-            is_connect_key=True,
-            prompt_on_new=True,
+            prompt=lambda cm: "Enter your L2 private key", is_secure=True, is_connect_key=True, prompt_on_new=True
         ),
     )
 
@@ -74,15 +58,9 @@ KEYS = ParadexPerpetualConfigMap.construct()
 
 
 OTHER_DOMAINS = ["paradex_perpetual_testnet"]
-OTHER_DOMAINS_PARAMETER = {
-    "paradex_perpetual_testnet": "paradex_perpetual_testnet",
-}
-OTHER_DOMAINS_EXAMPLE_PAIR = {
-    "paradex_perpetual_testnet": EXAMPLE_PAIR,
-}
-OTHER_DOMAINS_DEFAULT_FEES = {
-    "paradex_perpetual_testnet": [0, 0.025],
-}
+OTHER_DOMAINS_PARAMETER = {"paradex_perpetual_testnet": "paradex_perpetual_testnet"}
+OTHER_DOMAINS_EXAMPLE_PAIR = {"paradex_perpetual_testnet": EXAMPLE_PAIR}
+OTHER_DOMAINS_DEFAULT_FEES = {"paradex_perpetual_testnet": [0, 0.025]}
 
 
 class ParadexPerpetualTestnetConfigMap(BaseConnectorConfigMap):
@@ -90,34 +68,23 @@ class ParadexPerpetualTestnetConfigMap(BaseConnectorConfigMap):
     paradex_perpetual_l1_address: SecretStr = Field(
         default=...,
         client_data=ClientFieldData(
-            prompt=lambda cm: "Enter your L1 Address",
-            is_secure=True,
-            is_connect_key=True,
-            prompt_on_new=True,
+            prompt=lambda cm: "Enter your L1 Address", is_secure=True, is_connect_key=True, prompt_on_new=True
         ),
     )
     # TODO: https://github.com/tradeparadex/QuantZone/issues/9
     # shall be False
-    paradex_perpetual_is_testnet: bool = Field(
-        default=True, client_data=ClientFieldData(is_connect_key=True)
-    )
+    paradex_perpetual_is_testnet: bool = Field(default=True, client_data=ClientFieldData(is_connect_key=True))
 
     paradex_perpetual_l1_private_key: SecretStr = Field(
         default=None,
         client_data=ClientFieldData(
-            prompt=lambda cm: "Enter your L1 private key",
-            is_secure=True,
-            is_connect_key=True,
-            prompt_on_new=True,
+            prompt=lambda cm: "Enter your L1 private key", is_secure=True, is_connect_key=True, prompt_on_new=True
         ),
     )
     paradex_perpetual_l2_private_key: SecretStr = Field(
         default=None,
         client_data=ClientFieldData(
-            prompt=lambda cm: "Enter your L2 private key",
-            is_secure=True,
-            is_connect_key=True,
-            prompt_on_new=True,
+            prompt=lambda cm: "Enter your L2 private key", is_secure=True, is_connect_key=True, prompt_on_new=True
         ),
     )
 
@@ -125,6 +92,4 @@ class ParadexPerpetualTestnetConfigMap(BaseConnectorConfigMap):
         title = "paradex_perpetual"
 
 
-OTHER_DOMAINS_KEYS = {
-    "paradex_perpetual_testnet": ParadexPerpetualTestnetConfigMap.construct(),
-}
+OTHER_DOMAINS_KEYS = {"paradex_perpetual_testnet": ParadexPerpetualTestnetConfigMap.construct()}

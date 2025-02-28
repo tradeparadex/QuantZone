@@ -61,16 +61,8 @@ ALL_LIMIT_TIME_INTERVAL = 1
 ALL_ENDPOINTS_LIMIT = "All"
 
 RATE_LIMITS = [
-    RateLimit(
-        ALL_ENDPOINTS_LIMIT,
-        limit=ALL_MAX_REQUEST,
-        time_interval=ALL_LIMIT_TIME_INTERVAL,
-    ),
-    RateLimit(
-        limit_id=ALL_ORDERS_LIMIT,
-        limit=ORDERS_MAX_REQUEST,
-        time_interval=ORDERS_LIMIT_TIME_INTERVAL,
-    ),
+    RateLimit(ALL_ENDPOINTS_LIMIT, limit=ALL_MAX_REQUEST, time_interval=ALL_LIMIT_TIME_INTERVAL),
+    RateLimit(limit_id=ALL_ORDERS_LIMIT, limit=ORDERS_MAX_REQUEST, time_interval=ORDERS_LIMIT_TIME_INTERVAL),
     # Weight Limits for individual endpoints
     RateLimit(
         limit_id=CREATE_ORDER_URL,

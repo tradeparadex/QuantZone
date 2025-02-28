@@ -1,11 +1,11 @@
-from typing import Optional
-
 from paradex_py.account.account import ParadexAccount
 from paradex_py.api.api_client import ParadexApiClient
 from paradex_py.environment import PROD, TESTNET
 
 from hummingbot.core.web_assistant.auth import AuthBase
 from hummingbot.core.web_assistant.connections.data_types import RESTRequest, WSRequest
+
+breakpoint()
 
 
 class ParadexPerpetualAuth(AuthBase):
@@ -17,13 +17,11 @@ class ParadexPerpetualAuth(AuthBase):
         self,
         paradex_perpetual_l1_address: str,
         paradex_perpetual_is_testnet: bool,
-        paradex_perpetual_l1_private_key: Optional[str] = None,
-        paradex_perpetual_l2_private_key: Optional[str] = None,
+        paradex_perpetual_l1_private_key: str | None = None,
+        paradex_perpetual_l2_private_key: str | None = None,
     ):
         self._paradex_perpetual_l1_address = paradex_perpetual_l1_address
-        self._paradex_perpetual_chain = (
-            TESTNET if paradex_perpetual_is_testnet else PROD
-        )
+        self._paradex_perpetual_chain = TESTNET if paradex_perpetual_is_testnet else PROD
         self._paradex_perpetual_l1_private_key = paradex_perpetual_l1_private_key
         self._paradex_perpetual_l2_private_key = paradex_perpetual_l2_private_key
 

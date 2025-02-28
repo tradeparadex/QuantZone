@@ -3,9 +3,13 @@ This module provides utilities for managing parameters in a configuration file.
 
 It includes classes for defining parameters, parsing their values, and managing them.
 """
-import structlog
+
 import os
-from typing import Any, Dict, List, Optional
+from collections.abc import Callable
+from typing import Any
+
+import structlog
+
 
 class Param:
     def __init__(self, name: str, value: Any, val_type: Any = str) -> None:
@@ -23,12 +27,12 @@ class Param:
 
     @staticmethod
     def _parse_value(value: str, value_type: Any):
-        if value_type == bool:
+        if isinstance(value_type, bool):
             return str(value).lower() == "true"
         return value_type(value)
 
-class ParamsManager:
 
+class ParamsManager:
     _logger = None
 
     @classmethod
@@ -37,12 +41,9 @@ class ParamsManager:
             cls._logger = structlog.get_logger(__name__)
         return cls._logger
 
-
-    def __init__(self, parent, params: List[Param], config: dict, on_param_update: Optional[callable] = None):
+    def __init__(self, parent, params: list[Param], config: dict, on_param_update: Callable | None = None):
         self.parent = parent
-        self.params = {
-            param.tag: param for param in params
-        }
+        self.params = {param.tag: param for param in params}
 
         self.config = config
         # Casting and Overriding default from ENV

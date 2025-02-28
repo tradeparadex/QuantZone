@@ -21,8 +21,8 @@ import traceback
 import structlog
 from dotenv import load_dotenv
 
-from pricer_perps import PerpPricer
-from strategy import PerpMarketMaker
+from quantzone.pricer.pricer_perps import PerpPricer
+from quantzone.strategy import PerpMarketMaker
 
 
 # Configure structlog
@@ -57,11 +57,7 @@ def configure_logging():
     )
 
     # Configure root logger
-    logging.basicConfig(
-        format="%(message)s",
-        stream=sys.stdout,
-        level=numeric_level,
-    )
+    logging.basicConfig(format="%(message)s", stream=sys.stdout, level=numeric_level)
 
 
 configure_logging()
@@ -72,9 +68,7 @@ parser.add_argument("--config", default="strategy_settings.yaml")
 args = parser.parse_args()
 
 
-async def shutdown(
-    signal: signal.Signals, loop: asyncio.AbstractEventLoop, my_process: PerpMarketMaker
-) -> None:
+async def shutdown(signal: signal.Signals, loop: asyncio.AbstractEventLoop, my_process: PerpMarketMaker) -> None:
     """
     Shutdown the strategy gracefully.
     """
@@ -98,18 +92,13 @@ def handle_exception(loop: asyncio.AbstractEventLoop, context: dict) -> None:
 async def main():
     load_dotenv()
     loop = asyncio.get_running_loop()
-    strategy = PerpMarketMaker(
-        loop=loop, PricerClass=PerpPricer, config_path=args.config
-    )
+    strategy = PerpMarketMaker(loop=loop, PricerClass=PerpPricer, config_path=args.config)
 
     if platform.system() != "Windows":
         # Set up signal handlers
         signals = (signal.SIGHUP, signal.SIGTERM, signal.SIGINT)
         for s in signals:
-            loop.add_signal_handler(
-                s, lambda s=s: asyncio.create_task(shutdown(s, loop, strategy))
-            )
-
+            loop.add_signal_handler(s, lambda s=s: asyncio.create_task(shutdown(s, loop, strategy)))
         # Set up exception handler
         loop.set_exception_handler(handle_exception)
 

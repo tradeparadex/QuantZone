@@ -9,8 +9,8 @@ from decimal import Decimal as D
 
 import structlog
 
-from strategy import BasePricer, RawFairPrice
-from utils.data_methods import PriceType, Side
+from ..strategy import BasePricer, RawFairPrice
+from ..utils.data_methods import PriceType, Side
 
 
 class PerpPricer(BasePricer):
@@ -89,10 +89,7 @@ class PerpPricer(BasePricer):
         Returns:
             Decimal: The factored funding rate value.
         """
-        return (
-            self.strategy._smoothen_funding_rate.value
-            * self.strategy.pricing_funding_rate_factor
-        )
+        return self.strategy._smoothen_funding_rate.value * self.strategy.pricing_funding_rate_factor
 
     @staticmethod
     def cap_values(val: D, min_val: D, max_val: D) -> D:
@@ -113,27 +110,13 @@ class PerpPricer(BasePricer):
         """
         Publish metrics for the strategy.
         """
-        self.strategy._publish_strat_metric(
-            "base", self.strategy.get_base_price(PriceType.Mid)
-        )
-        self.strategy._publish_strat_metric(
-            "base_ema", self.strategy._smoothen_spot_price.value
-        )
-        self.strategy._publish_strat_metric(
-            "basis_ema", self.strategy._smoothen_basis.value
-        )
-        self.strategy._publish_strat_metric(
-            "fr_ema", self.strategy._smoothen_funding_rate.value
-        )
+        self.strategy._publish_strat_metric("base", self.strategy.get_base_price(PriceType.Mid))
+        self.strategy._publish_strat_metric("base_ema", self.strategy._smoothen_spot_price.value)
+        self.strategy._publish_strat_metric("basis_ema", self.strategy._smoothen_basis.value)
+        self.strategy._publish_strat_metric("fr_ema", self.strategy._smoothen_funding_rate.value)
         self.strategy._publish_strat_metric("fr", self.strategy.get_inst_rate())
-        self.strategy._publish_strat_metric(
-            "volatility_adj", self.strategy.get_vol_adjustment()
-        )
-        self.strategy._publish_strat_metric(
-            "price_adjustment", self.strategy.price_adjustment
-        )
-        self.strategy._publish_strat_metric(
-            "spread_adj", self.strategy.ask_spread + self.strategy.bid_spread
-        )
+        self.strategy._publish_strat_metric("volatility_adj", self.strategy.get_vol_adjustment())
+        self.strategy._publish_strat_metric("price_adjustment", self.strategy.price_adjustment)
+        self.strategy._publish_strat_metric("spread_adj", self.strategy.ask_spread + self.strategy.bid_spread)
         self.strategy._publish_strat_metric("basis_adj", self.factored_basis)
         self.strategy._publish_strat_metric("fr_adj", -self.factored_fr)

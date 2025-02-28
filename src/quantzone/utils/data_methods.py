@@ -11,9 +11,10 @@ import math
 import time
 from abc import ABC, abstractmethod
 from collections import deque, namedtuple
+from dataclasses import dataclass, field
 from decimal import Decimal as D
 from enum import Enum
-from typing import Dict, List
+from typing import Literal
 
 import numpy as np
 import structlog
@@ -49,83 +50,51 @@ class PriceType(Enum):
 AccountInfo = namedtuple("AccountInfo", ["free_collateral", "account_value"])
 
 
+@dataclass
 class Position:
-    def __init__(self, symbol: str, size: D, notional: D):
-        self.symbol = symbol
-        self.size = size
-        self.notional = notional
+    symbol: str
+    size: D
+    notional: D
 
     def __repr__(self):
         return f"Position<{self.symbol}: {self.notional}>"
 
 
+@dataclass
 class PriceSize:
     """
     A class representing a price and size pair for trading orders.
     """
 
-    def __init__(self, price: D, size: D, type: OrderType = OrderType.LIMIT_MAKER):
-        self.price: D = price
-        self.size: D = size
-        self.type: OrderType = type
+    price: D
+    size: D
+    type: OrderType = OrderType.LIMIT_MAKER
 
     def __repr__(self):
         return f"[ p: {self.price} s: {self.size} ]"
 
 
+@dataclass
 class Order:
     """
     A class representing an order in the trading system.
     """
 
-    def __init__(
-        self, symbol: str, side: Side, price: D, amount: D, order_type: OrderType
-    ):
-        self.symbol = symbol
-        self.side = side
-        self.price = price
-        self.amount = amount
-        self.order_type = order_type
-        self.client_order_id = None
-        self.exchange_order_id = None
-        self.status = "CREATED"
-        self.created_ts_ns = time.time_ns()
+    symbol: str
+    side: Side
+    price: D
+    amount: D
+    order_type: OrderType
+    client_order_id: str | None = None
+    exchange_order_id: int | None = None
+    status: str = "CREATED"
+    created_ts_ns: int = field(default_factory=time.time_ns)
 
     def __repr__(self):
         return f"[{self.symbol}|{self.order_type}] {self.side} {self.amount}@{self.price} ({self.status})"
 
 
-TradingRules = namedtuple(
-    "TradeTick", ["min_price_increment", "min_notional_size", "min_amount_increment"]
-)
-
-
-class ConnectorBase(ABC):
-    """
-    An abstract base class for connectors in the trading system.
-    """
-
-    def __init__(self, loop: asyncio.AbstractEventLoop):
-        self.loop = loop
-        self.logger = structlog.get_logger(self.__class__.__name__)
-        self.trading_rules: Dict[str, TradingRules] = {}
-        self.orderbooks: Dict[str, Depth] = {}
-        self.bbos = {}
-        self.latest_fundings = {}
-        self.account_info = {}
-        self.positions = {}
-
-    @abstractmethod
-    async def initialize(self):
-        pass
-
-    def quantize_order_price(self, symbol: str, price: D):
-        tick_size = self.trading_rules[symbol].min_price_increment
-        return price.quantize(tick_size)
-
-    def quantize_order_amount(self, symbol: str, amount: D):
-        min_amount_increment = self.trading_rules[symbol].min_amount_increment
-        return amount.quantize(min_amount_increment)
+TradingRules = namedtuple("TradingRules", ["min_price_increment", "min_notional_size", "min_amount_increment"])
 
 
 class Proposal:
@@ -133,9 +102,9 @@ class Proposal:
     A class representing a proposal for buying or selling a financial instrument.
     """
 
-    def __init__(self, buys: List[PriceSize], sells: List[PriceSize]):
-        self.buys: List[PriceSize] = buys
-        self.sells: List[PriceSize] = sells
+    def __init__(self, buys: list[PriceSize], sells: list[PriceSize]):
+        self.buys: list[PriceSize] = buys
+        self.sells: list[PriceSize] = sells
 
     def __repr__(self):
         return (
@@ -179,6 +148,9 @@ class RollingAnnualizedVolatility:
         timestamps (deque): A fixed-size deque storing timestamps corresponding to the prices.
         logger (Logger): A logger instance for this class.
     """
+
+    prices: deque[D]
+    timestamps: deque[D]
 
     def __init__(self, window_size: int):
         self.logger = structlog.get_logger(self.__class__.__name__)
@@ -227,9 +199,7 @@ class RollingAnnualizedVolatility:
         # Annualize the volatility
         avg_interval_ms = np.mean(filtered_time_diffs)
         ms_per_year = 365 * 24 * 60 * 60 * 1000  # milliseconds
-        annualized_volatility = normalized_volatility * np.sqrt(
-            ms_per_year / avg_interval_ms
-        )
+        annualized_volatility = normalized_volatility * np.sqrt(ms_per_year / avg_interval_ms)
 
         return D(annualized_volatility)
 
@@ -251,22 +221,18 @@ class ExponentialMovingAverage:
         decay_on_read (bool): Whether to decay the EMA value on read.
     """
 
-    def __init__(
-        self, half_life_ms: D, decay_on_read: bool = False, init_val: D = D(0)
-    ):
+    def __init__(self, half_life_ms: D, decay_on_read: bool = False, init_val: D = D(0)):
         self.value = init_val
         # TODO: think about setting .timestamp as when init_val is accured.
         self.timestamp = 0.0
         self.half_life = D(half_life_ms)  # half-life in ms
-        self.lambda_ = (
-            D(math.log(2)) / self.half_life
-        )  # decay constant based on half-life
+        self.lambda_ = D(math.log(2)) / self.half_life  # decay constant based on half-life
         self.decay_on_read = decay_on_read
 
     def decay(self, current_timestamp: float):
         """Update the EMA value based on the time decay."""
         time_difference = D(current_timestamp - self.timestamp)
-        decay_factor = D(np.exp(-self.lambda_ * time_difference))
+        decay_factor = D.exp(-self.lambda_ * time_difference)
         self.value *= decay_factor
         self.timestamp = current_timestamp
 
@@ -275,7 +241,7 @@ class ExponentialMovingAverage:
         if self.value is None:
             self.value = D(new_value)
         time_difference = D(new_timestamp - self.timestamp)
-        decay_factor = D(np.exp(-self.lambda_ * time_difference))
+        decay_factor = D.exp(-self.lambda_ * time_difference)
         self.value = (1 - decay_factor) * D(new_value) + decay_factor * self.value
         self.timestamp = new_timestamp
 
@@ -285,7 +251,7 @@ class ExponentialMovingAverage:
             self.decay(current_timestamp)
         # TODO:
         # self.corrected_value = self.value / (1 - e^{ log(2) / half_life_ms * time_difference_from_initial_update})
-        return self.corrected_value
+        # return self.corrected_value
         return self.value
 
 
@@ -294,9 +260,11 @@ class Level:
     A class representing a price level in an order book.
     """
 
-    def __init__(self, px: float, qty: float, offset: int = 0) -> None:
-        self.px = float(px) if px not in [None, ""] else None
-        self.qty = float(qty) if qty not in [None, ""] else None
+    def __init__(
+        self, px: float | None | Literal[""] | D, qty: float | None | Literal[""] | D, offset: int = 0
+    ) -> None:
+        self.px = float(px) if px is not None and px != "" else None
+        self.qty = float(qty) if qty is not None and qty != "" else None
         self.offset = int(offset)
 
     def __str__(self):
@@ -311,6 +279,11 @@ class Depth:
     A class representing an order book depth.
     """
 
+    bids: SortedDict
+    asks: SortedDict
+    last_ask_zero_offset: dict
+    last_bid_zero_offset: dict
+
     def __init__(self, iid: str) -> None:
         self.logger = structlog.get_logger(self.__class__.__name__)
 
@@ -324,25 +297,15 @@ class Depth:
         self.last_bid_zero_offset = {}
         self.last_ask_zero_offset = {}
 
-    def update_order_book(self, depth_diff: Dict, reset: bool = False):
+    def update_order_book(self, depth_diff: dict, reset: bool = False):
         """Update the order book with a depth difference."""
         if reset:
             self.bids.clear()
             self.asks.clear()
-        self.update_order_book_side(
-            depth_diff["bids"], self.bids, self.last_bid_zero_offset, "B"
-        )
-        self.update_order_book_side(
-            depth_diff["asks"], self.asks, self.last_ask_zero_offset, "A"
-        )
+        self.update_order_book_side(depth_diff["bids"], self.bids, self.last_bid_zero_offset, "B")
+        self.update_order_book_side(depth_diff["asks"], self.asks, self.last_ask_zero_offset, "A")
 
-    def update_order_book_side(
-        self,
-        book_side: List[Dict],
-        order_book: SortedDict,
-        last_offsets: Dict,
-        side: str,
-    ):
+    def update_order_book_side(self, book_side: list[dict], order_book: SortedDict, last_offsets: dict, side: str):
         """Update the order book side with a depth difference."""
         for level in book_side:
             price = D(level["price"])
@@ -350,7 +313,8 @@ class Depth:
             if price in order_book:
                 # Only update the quantity if the new offset is bigger than the stored one
                 self.logger.debug(
-                    f"({side}:0) level: {level}, {offset} > {order_book[price].offset}, {offset > order_book[price].offset}"
+                    f"({side}:0) level: {level}, {offset} > {order_book[price].offset}, "
+                    f"{offset > order_book[price].offset}"
                 )
                 if offset > order_book[price].offset:
                     if level["size"] == "0":
@@ -362,14 +326,13 @@ class Depth:
                         order_book[price].offset = offset
             else:
                 self.logger.debug(
-                    f"({side}:1) level: {level}, {offset} > {last_offsets.get(price, 0)}, {offset > last_offsets.get(price, 0)}"
+                    f"({side}:1) level: {level}, {offset} > {last_offsets.get(price, 0)}, "
+                    f"{offset > last_offsets.get(price, 0)}"
                 )
                 if offset >= last_offsets.get(price, 0):
                     # Add a new price level with the quantity and offset
                     if level["size"] != "0":
-                        order_book[price] = Level(
-                            price, level["size"], level.get("offset", 0)
-                        )
+                        order_book[price] = Level(price, level["size"], level.get("offset", 0))
                     else:
                         last_offsets[price] = offset
 
@@ -385,9 +348,7 @@ class Depth:
         """Return the mid price."""
         if len(self.bids) == 0 or len(self.asks) == 0:
             return None
-        return (
-            self.bids.peekitem(index=-1)[1].px + self.asks.peekitem(index=0)[1].px
-        ) / 2
+        return (self.bids.peekitem(index=-1)[1].px + self.asks.peekitem(index=0)[1].px) / 2
 
     def get_spread(self):
         """Return the spread."""
@@ -412,4 +373,42 @@ class Depth:
                 self.bids.popitem(index=-1)
 
     def __str__(self):
-        return f"Depth<{self.iid}@{dt.datetime.fromtimestamp(self.received_ts/1e9)}>(BID={self.bids.peekitem(index=-1)[1]};ASK={self.asks.peekitem(index=0)[1]})"
+        return (
+            f"Depth<{self.iid}@{dt.datetime.fromtimestamp(self.received_ts/1e9)}>"
+            f"(BID={self.bids.peekitem(index=-1)[1]};ASK={self.asks.peekitem(index=0)[1]})"
+        )
+
+
+class ConnectorBase(ABC):
+    """
+    An abstract base class for connectors in the trading system.
+    """
+
+    trading_rules: dict[str, TradingRules]
+    orderbooks: dict[str, Depth]
+    bbos: dict[str, dict[str, Level]]
+    latest_fundings: dict[str, dict]
+    account_info: dict
+    positions: dict[str, dict]
+
+    def __init__(self, loop: asyncio.AbstractEventLoop):
+        self.loop = loop
+        self.logger = structlog.get_logger(self.__class__.__name__)
+        self.trading_rules = {}
+        self.orderbooks = {}
+        self.bbos = {}
+        self.latest_fundings = {}
+        self.account_info = {}
+        self.positions = {}
+
+    @abstractmethod
+    async def initialize(self):
+        pass
+
+    def quantize_order_price(self, symbol: str, price: D):
+        tick_size = self.trading_rules[symbol].min_price_increment
+        return price.quantize(tick_size)
+
+    def quantize_order_amount(self, symbol: str, amount: D):
+        min_amount_increment = self.trading_rules[symbol].min_amount_increment
+        return amount.quantize(min_amount_increment)

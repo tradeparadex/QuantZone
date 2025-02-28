@@ -2,11 +2,10 @@
 This module provides utility functions for various purposes.
 """
 
-import ruamel.yaml
 from ruamel.yaml import YAML
 
 
-def load_config(file_path: str, raise_error: bool=True) -> dict:
+def load_config(file_path: str, raise_error: bool = True) -> dict:
     """
     Loads a YAML configuration file.
 
@@ -18,9 +17,9 @@ def load_config(file_path: str, raise_error: bool=True) -> dict:
         dict: The loaded configuration.
     """
     try:
-        with open(file_path, 'r') as file:
+        with open(file_path) as file:
             # return ruamel.yaml.safe_load(file)
-            return YAML(typ='safe',pure=True).load(file)
+            return YAML(typ="safe", pure=True).load(file)
     except Exception as e:
         if raise_error:
             raise e

@@ -5,9 +5,12 @@ It includes safe wrappers for asynchronous tasks, error handling, and various he
 
 import asyncio
 import inspect
-import structlog
 import time
-from typing import Coroutine, Any, Callable
+from collections.abc import Callable, Coroutine
+from typing import Any
+
+import structlog
+
 
 async def safe_wrapper(c: Coroutine) -> Any:
     try:
@@ -15,7 +18,7 @@ async def safe_wrapper(c: Coroutine) -> Any:
     except asyncio.CancelledError:
         raise
     except Exception as e:
-        structlog.get_logger(__name__).error(f"Unhandled error in background task: {str(e)}", exc_info=True)
+        structlog.get_logger(__name__).error(f"Unhandled error in background task: {e!s}", exc_info=True)
 
 
 def safe_ensure_future(coro: Coroutine, *args, **kwargs) -> asyncio.Future:
@@ -26,7 +29,7 @@ async def safe_gather(*args: Coroutine, **kwargs: Any) -> Any:
     try:
         return await asyncio.gather(*args, **kwargs)
     except Exception as e:
-        structlog.get_logger(__name__).debug(f"Unhandled error in background task: {str(e)}", exc_info=True)
+        structlog.get_logger(__name__).debug(f"Unhandled error in background task: {e!s}", exc_info=True)
         raise
 
 
@@ -42,30 +45,23 @@ async def wait_til(condition_func: Callable[[], bool], timeout: float = 10) -> N
 
 
 async def run_command(*args: str) -> str:
-    process = await asyncio.create_subprocess_exec(
-        *args,
-        stdout=asyncio.subprocess.PIPE)
+    process = await asyncio.create_subprocess_exec(*args, stdout=asyncio.subprocess.PIPE)
     stdout, stderr = await process.communicate()
     return stdout.decode().strip()
 
 
-def call_sync(coro: Coroutine,
-              loop: asyncio.AbstractEventLoop,
-              timeout: float = 30.0) -> Any:
+def call_sync(coro: Coroutine, loop: asyncio.AbstractEventLoop, timeout: float = 30.0) -> Any:
     import threading
+
     if threading.current_thread() != threading.main_thread():  # pragma: no cover
-        fut = asyncio.run_coroutine_threadsafe(
-            asyncio.wait_for(coro, timeout),
-            loop
-        )
+        fut = asyncio.run_coroutine_threadsafe(asyncio.wait_for(coro, timeout), loop)
         return fut.result()
     elif not loop.is_running():
         try:
             loop = asyncio.get_event_loop()
         except RuntimeError:
             structlog.get_logger(__name__).debug(
-                "Runtime error in call_sync - Using new event loop to exec coro",
-                exc_info=True
+                "Runtime error in call_sync - Using new event loop to exec coro", exc_info=True
             )
             loop = asyncio.new_event_loop()
     return loop.run_until_complete(asyncio.wait_for(coro, timeout))
