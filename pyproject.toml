@@ -19,6 +19,7 @@ dependencies = [
     "paradex-py>=0.4.3",
     "pybit>=5.9.0",
     "python-binance>=1.0.27",
+    "scipy-stubs>=1.15.2.0",
 ]
 
 [build-system]
@@ -26,7 +27,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.uv]
-default-groups = []
+default-groups = ["dev"]
 
 [dependency-groups]
 dev = ["mypy>=1.15.0", "pyright>=1.1.395", "pytest>=8.3.4"]

@@ -8,14 +8,15 @@ Classes:
     BinanceSpotConnector: Main connector class for Binance spot exchange.
 """
 
-import asyncio
 import time
 from collections.abc import Callable
 
 import structlog
 from binance import AsyncClient, BinanceSocketManager
 
-from ..utils.data_methods import ConnectorBase, Depth, Level, Ticker, UpdateType
+from ..utils.async_utils import safe_ensure_future
+from ..utils.data_methods import Depth, Level, Ticker, UpdateType
+from .connector_base import ConnectorBase
 
 
 class BinanceSpotConnector(ConnectorBase):
@@ -232,7 +233,8 @@ class BinanceSpotConnector(ConnectorBase):
         self._symbol_map[og_symbol] = market
 
         ts = self._socket_manager.depth_socket(og_symbol, depth="10", interval=100)
-        _ = asyncio.ensure_future(self._listen_to_data(ts, market), loop=self.loop)
+        future = safe_ensure_future(self._listen_to_data(ts, market), loop=self.loop)
+        future.done()
 
     async def subscribe_to_trade_channels(self, market, callback):
         """Subscribe to trade channels (placeholder method)."""

@@ -19,7 +19,6 @@ from pybit.unified_trading import HTTP, WebSocket
 from ..utils.async_utils import safe_ensure_future
 from ..utils.data_methods import (
     AccountInfo,
-    ConnectorBase,
     Depth,
     Level,
     Order,
@@ -30,6 +29,7 @@ from ..utils.data_methods import (
     TradingRules,
     UpdateType,
 )
+from .connector_base import ConnectorBase
 
 
 class BybitUTAConnector(ConnectorBase):
@@ -98,6 +98,7 @@ class BybitUTAConnector(ConnectorBase):
     def get_positions(self) -> dict[str, Position]:
         assert self._http_client is not None, "HTTP client is not initialized"
         acct_positions = self._http_client.get_positions(category=self.channel_type, settleCoin="USDC")
+        breakpoint()
         positions = {}
         for a in acct_positions["result"]["list"]:
             _symbol = self._translate_symbol_back(a["symbol"])

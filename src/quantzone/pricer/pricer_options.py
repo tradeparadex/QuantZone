@@ -11,11 +11,11 @@ import numpy as np
 import structlog
 from scipy.stats import norm
 
-from ..strategy import BasePricer, RawFairPrice
 from ..utils.data_methods import Side
+from .pricer_base import PricerBase, RawFairPrice
 
 
-class OptionPricer(BasePricer):
+class OptionPricer(PricerBase):
     """
     A pricer for options contracts.
 
@@ -56,7 +56,9 @@ class OptionPricer(BasePricer):
 
         funding_period_hours = D("8")
         funding_period_years = funding_period_hours / D(24 * 365)
-        fair_price = self.perp_bs_price(spot_price, strike_price, self.iv, funding_period_years, self.option_type)
+        fair_price = self.perp_bs_price(
+            spot_price, float(strike_price), float(self.iv), float(funding_period_years), self.option_type
+        )
 
         return RawFairPrice(fair=fair_price, base=fair_price)
 
@@ -80,6 +82,7 @@ class OptionPricer(BasePricer):
             return max(0, K - S)
 
     def perp_bs_price(self, S: float, K: float, sigma: float, funding_period_years: float, option_type: str):
+        breakpoint()
         return self.option_instrinsic_value(S, K, option_type) + self.perp_bs_time_value(
             S, K, sigma, funding_period_years
         )

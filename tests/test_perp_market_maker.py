@@ -2,7 +2,7 @@ from decimal import Decimal as D
 
 import pytest
 
-from strategy import PerpMarketMaker, PriceSize, Proposal, RawFairPrice, Side
+from quantzone.strategy import PerpMarketMaker, PriceSize, Proposal, RawFairPrice, Side
 
 
 class MockPricer:

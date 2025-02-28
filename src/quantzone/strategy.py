@@ -63,11 +63,10 @@ from decimal import Decimal as D
 import numpy as np
 import structlog
 
-from .connectors.base_connector import _get_connector
+from .connectors.base_connector import get_connector
+from .connectors.connector_base import ConnectorBase
 from .utils.async_utils import safe_ensure_future
 from .utils.data_methods import (
-    ConnectorBase,
-    ExponentialMovingAverage,
     Order,
     OrderType,
     PriceSize,
@@ -79,48 +78,11 @@ from .utils.data_methods import (
     TriggerType,
     UpdateType,
 )
+from .utils.ema import ExponentialMovingAverage
 from .utils.metrics_publisher import MetricsMessage, MetricsPublisher
 from .utils.misc_utils import load_config
 from .utils.parameters_manager import Param, ParamsManager
 from .utils.risk_manager import RiskManager
-
-
-class RawFairPrice:
-    """
-    Represents a raw fair price with base value.
-
-    This class encapsulates a fair price and its corresponding base value,
-    which are used in pricing calculations for the market making strategy.
-
-    Attributes:
-        fair (Decimal): The fair price value.
-        base (Decimal): The base value associated with the fair price.
-    """
-
-    def __init__(self, fair: D, base: D):
-        self.fair = fair
-        self.base = base
-
-
-class BasePricer:
-    """
-    Abstract base class for pricing logic.
-
-    This class defines the interface for pricing logic, which must be implemented
-    by concrete subclasses.
-
-    Attributes:
-        strategy: The parent strategy instance.
-    """
-
-    def __init__(self, strategy):
-        self.strategy = strategy
-
-    def get_raw_fair_price(self, side: Side) -> RawFairPrice:
-        raise NotImplementedError("Subclasses must implement get_base_price")
-
-    def publish_metrics(self):
-        raise NotImplementedError("Subclasses must implement publish_metrics")
 
 
 class PerpMarketMaker:
@@ -182,6 +144,8 @@ class PerpMarketMaker:
     PARAM_CANCEL_BY_EXCHANGE_ORDER_ID = "cancel_by_exchange_order_id"
     PARAM_ORDER_RATIO_TO_CANCEL_ALL = "order_ratio_to_cancel_all"
 
+    _reeval_task: asyncio.Future | None
+
     def __init__(
         self,
         loop: asyncio.AbstractEventLoop,
@@ -199,7 +163,7 @@ class PerpMarketMaker:
         else:
             self.config = {}
 
-        self.market_connector = _get_connector("paradex_perp", loop=self.loop)
+        self.market_connector = get_connector("paradex_perp", loop=self.loop)
 
         self.pricer = PricerClass(self)
 
@@ -211,7 +175,7 @@ class PerpMarketMaker:
         if self.external_markets not in [None, ""]:
             self.external_market_symbol = self.external_markets.split(":")[-1]
             self.external_market_exchange = self.external_markets.split(":")[0]
-            self.external_connector = _get_connector(self.external_market_exchange, loop=self.loop)
+            self.external_connector = get_connector(self.external_market_exchange, loop=self.loop)
         else:
             self.external_connector = None
             self.external_market_symbol = None

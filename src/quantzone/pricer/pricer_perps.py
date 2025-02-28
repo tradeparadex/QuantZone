@@ -9,11 +9,11 @@ from decimal import Decimal as D
 
 import structlog
 
-from ..strategy import BasePricer, RawFairPrice
 from ..utils.data_methods import PriceType, Side
+from .pricer_base import PricerBase, RawFairPrice
 
 
-class PerpPricer(BasePricer):
+class PerpPricer(PricerBase):
     """
     A pricer for perpetual futures contracts.
 
@@ -49,11 +49,10 @@ class PerpPricer(BasePricer):
         raw_spot_ema = self.strategy._smoothen_spot_price.value
 
         if raw_spot is None or not raw_spot.is_finite():
-            if self.strategy.use_anchor_price:
-                raw_spot = self.strategy.anchor_price
-                raw_spot_ema = self.strategy.anchor_price
-            else:
-                return None
+            if not self.strategy.use_anchor_price:
+                raise ValueError("Invalid raw spot price")
+            raw_spot = self.strategy.anchor_price
+            raw_spot_ema = self.strategy.anchor_price
 
         self.logger.debug(f"raw_spot: {raw_spot}, raw_spot_ema: {raw_spot_ema}")
 

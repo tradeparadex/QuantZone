@@ -28,7 +28,6 @@ from paradex_py.environment import PROD, TESTNET
 from ..utils.api_utils import SyncRateLimiter
 from ..utils.data_methods import (
     AccountInfo,
-    ConnectorBase,
     Depth,
     Level,
     Order,
@@ -39,6 +38,7 @@ from ..utils.data_methods import (
     TradingRules,
     UpdateType,
 )
+from .connector_base import ConnectorBase
 
 
 class ParadexPerpConnector(ConnectorBase):

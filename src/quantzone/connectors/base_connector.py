@@ -7,13 +7,13 @@ designed to handle the specific API and functionality of its respective
 trading platform.
 """
 
-from ..utils.data_methods import ConnectorBase
 from .binance_spot import BinanceSpotConnector
 from .bybit_uta import BybitUTAConnector
+from .connector_base import ConnectorBase
 from .paradex_perp import ParadexPerpConnector
 
 
-def _get_connector(name: str, **kwargs) -> "ConnectorBase":
+def get_connector(name: str, **kwargs) -> ConnectorBase:
     """
     Get the connector instance based on the provided name.
     """
