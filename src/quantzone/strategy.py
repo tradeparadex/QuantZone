@@ -561,7 +561,7 @@ class PerpMarketMaker:
             process_name=self.algo_name,
             tag_name=tag,
             market=self.market,
-            value=val,
+            value=float(val),
             account=self.market_connector.account_info.get("account", "N/A"),
         )
 
