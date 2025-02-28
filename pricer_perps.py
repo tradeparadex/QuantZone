@@ -8,9 +8,8 @@ pricing for buy and sell orders.
 from decimal import Decimal as D
 
 import structlog
-
-from ..utils.data_methods import PriceType, Side
-from .pricer_base import PricerBase, RawFairPrice
+from strategy import PricerBase, RawFairPrice
+from utils.data_methods import PriceType, Side
 
 
 class PerpPricer(PricerBase):
@@ -49,10 +48,11 @@ class PerpPricer(PricerBase):
         raw_spot_ema = self.strategy._smoothen_spot_price.value
 
         if raw_spot is None or not raw_spot.is_finite():
-            if not self.strategy.use_anchor_price:
-                raise ValueError("Invalid raw spot price")
-            raw_spot = self.strategy.anchor_price
-            raw_spot_ema = self.strategy.anchor_price
+            if self.strategy.use_anchor_price:
+                raw_spot = self.strategy.anchor_price
+                raw_spot_ema = self.strategy.anchor_price
+            else:
+                return None
 
         self.logger.debug(f"raw_spot: {raw_spot}, raw_spot_ema: {raw_spot_ema}")
 

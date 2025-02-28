@@ -1,6 +1,6 @@
 """
 This file contains the OptionPricer class, which is responsible for calculating
-fair prices for options contracts. It inherits from BasePricer and uses a
+fair prices for options contracts. It inherits from PricerBase and uses a
 hardcoded implied volatility (IV) value to determine appropriate pricing for
 buy and sell orders.
 """
@@ -19,7 +19,7 @@ class OptionPricer(PricerBase):
     """
     A pricer for options contracts.
 
-    This class extends the BasePricer to provide specialized pricing
+    This class extends the PricerBase to provide specialized pricing
     calculations for options. It uses a hardcoded implied volatility (IV)
     value and the Black-Scholes model to determine fair prices for buy
     and sell orders.
