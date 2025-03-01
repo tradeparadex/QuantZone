@@ -98,7 +98,7 @@ async def main():
         # Set up signal handlers
         signals = (signal.SIGHUP, signal.SIGTERM, signal.SIGINT)
         for s in signals:
-            loop.add_signal_handler(s, lambda s=s: asyncio.create_task(shutdown(s, loop, strategy)))
+            loop.add_signal_handler(s, lambda: asyncio.create_task(shutdown(s, loop, strategy)))
         # Set up exception handler
         loop.set_exception_handler(handle_exception)
 

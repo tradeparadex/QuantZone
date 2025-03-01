@@ -63,7 +63,7 @@ from decimal import Decimal as D
 import numpy as np
 import structlog
 
-from .connectors.base_connector import get_connector
+from .connectors.connector import get_connector
 from .connectors.connector_base import ConnectorBase
 from .pricer.base import PricerBase
 from .utils.async_utils import safe_ensure_future
