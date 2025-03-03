@@ -64,9 +64,6 @@ class BybitUTAConnector(ConnectorBase):
         self._socket_manager = None
         self._private_socket_manager = None
 
-        self._data_callbacks = {}
-        self._trade_callbacks = {}
-
         self._symbol_map = {}
 
     async def initialize(self):
@@ -109,7 +106,7 @@ class BybitUTAConnector(ConnectorBase):
             )
         return positions
 
-    async def setup_trading_rules(self, market):
+    async def setup_trading_rules(self, _market):
         """
         Set up trading rules for a market.
 
@@ -122,7 +119,7 @@ class BybitUTAConnector(ConnectorBase):
         for market in _all_markets["result"]["list"]:
             if market["symbol"].endswith("USDT"):
                 continue
-
+            # FIX: shall do this for only one market
             _symbol = self._translate_symbol_back(market["symbol"])
             self.trading_rules[_symbol] = TradingRules(
                 min_amount_increment=D(market["lotSizeFilter"]["qtyStep"]),

@@ -77,6 +77,9 @@ class ParadexPerpConnector(ConnectorBase):
     """
 
     paradex: Paradex | None
+    _account_callback: Callable | None
+    internal_positions: dict[str, dict]
+    active_orders: dict[str, Order]
 
     def __init__(self, loop, key=None, secret=None):
         """
@@ -93,22 +96,10 @@ class ParadexPerpConnector(ConnectorBase):
         self.l1_address = key or os.getenv("PARADEX_L1_ADDRESS")
         self.l2_private_key = secret or os.getenv("PARADEX_PRIVATE_KEY")
 
-        self.orderbooks = {}
-        self.bbos = {}
-        self.latest_fundings = {}
-        self.account_info = {}
-
-        self._data_callbacks: dict[str, Callable] = {}
-        self._trade_callbacks: dict[str, Callable] = {}
-        self._account_callback: Callable | None = None
-
-        self.positions = {}
-        self.internal_positions: dict[str, dict] = {}
-
-        self.active_orders: dict[str, Order] = {}
-
+        self._account_callback = None
+        self.internal_positions = {}
+        self.active_orders = {}
         self._order_counter = 0
-
         self.rate_limiter = SyncRateLimiter(
             int(os.getenv("PARADEX_RATE_LIMIT", "8"))
         )  # X requests per second, adjust as needed
@@ -598,12 +589,10 @@ class ParadexPerpConnector(ConnectorBase):
         if callback is not None:
             self._account_callback = callback
         await self.paradex.ws_client.subscribe(ParadexWebsocketChannel.ACCOUNT, self._on_account_update)
-
         await self.paradex.ws_client.subscribe(ParadexWebsocketChannel.POSITIONS, callback=self._on_positions)
-
         await self.paradex.ws_client.subscribe(ParadexWebsocketChannel.TRADEBUSTS, callback=self._on_trade_bust)
 
-    async def setup_trading_rules(self, market):
+    async def setup_trading_rules(self, _market):
         """
         Set up trading rules for a market.
 
@@ -614,11 +603,14 @@ class ParadexPerpConnector(ConnectorBase):
         _para_markets = self.paradex.api_client.fetch_markets()
 
         for market in _para_markets["results"]:
-            self.trading_rules[market["symbol"]] = TradingRules(
-                min_amount_increment=D(market["order_size_increment"]),
-                min_price_increment=D(market["price_tick_size"]),
-                min_notional_size=D(market["min_notional"]),
-            )
+            if market["symbol"] == _market:
+                self.trading_rules[market["symbol"]] = TradingRules(
+                    min_amount_increment=D(market["order_size_increment"]),
+                    min_price_increment=D(market["price_tick_size"]),
+                    min_notional_size=D(market["min_notional"]),
+                )
+        if _market not in self.trading_rules:
+            self.logger.error(f"no trading rules found for market: {_market}")
 
     async def snapshots(self):
         """Take snapshots of current positions."""

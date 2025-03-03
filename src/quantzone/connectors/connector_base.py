@@ -1,5 +1,6 @@
 import asyncio
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from decimal import Decimal as D
 
 import structlog
@@ -18,6 +19,8 @@ class ConnectorBase(ABC):
     latest_fundings: dict[str, dict]
     account_info: dict
     positions: dict[str, dict]
+    _data_callbacks: dict[str, Callable]
+    _trade_callbacks: dict[str, Callable]
 
     def __init__(self, loop: asyncio.AbstractEventLoop):
         self.loop = loop
@@ -28,6 +31,8 @@ class ConnectorBase(ABC):
         self.latest_fundings = {}
         self.account_info = {}
         self.positions = {}
+        self._data_callbacks = {}
+        self._trade_callbacks = {}
 
     @abstractmethod
     async def initialize(self):

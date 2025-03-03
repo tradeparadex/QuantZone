@@ -10,6 +10,7 @@ Classes:
 
 import time
 from collections.abc import Callable
+from typing import ClassVar
 
 import structlog
 from binance import AsyncClient, BinanceSocketManager
@@ -40,8 +41,12 @@ class BinanceSpotConnector(ConnectorBase):
         _symbol_map (Dict[str, str]): Mapping between internal and exchange symbols.
     """
 
+    exchange: ClassVar[str] = "binance_spot"
     binance: AsyncClient | None
     _socket_manager: BinanceSocketManager | None
+    _data_callbacks: dict[str, Callable]
+    _trade_callbacks: dict[str, Callable]
+    _symbol_map: dict[str, str]
 
     def __init__(self, loop):
         """
@@ -50,22 +55,13 @@ class BinanceSpotConnector(ConnectorBase):
         Args:
             loop (asyncio.AbstractEventLoop): Event loop for asynchronous operations.
         """
+        super().__init__(loop)
         self.logger = structlog.get_logger(self.__class__.__name__)
         self.loop = loop
-        self.exchange = "binance_spot"
         self.binance = None
         self._socket_manager = None
 
-        self.orderbooks: dict[str, Depth] = {}
-        self.bbos: dict[str, dict[str, Level]] = {}
-        self.latest_fundings: dict[str, dict] = {}
-
-        self._data_callbacks: dict[str, Callable] = {}
-        self._trade_callbacks: dict[str, Callable] = {}
-
-        self.positions: dict[str, dict] = {}
-
-        self._symbol_map: dict[str, str] = {}
+        self._symbol_map = {}
 
     async def initialize(self):
         """Initialize the Binance client and socket manager."""

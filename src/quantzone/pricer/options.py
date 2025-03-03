@@ -37,7 +37,7 @@ class OptionPricer(PricerBase):
     def __init__(self, strategy):
         super().__init__(strategy)
         self.logger = structlog.get_logger(self.__class__.__name__)
-        self.iv = D("0.80")  # Hardcoded IV value
+        self.iv = D("0.80")  # TODO: Hardcoded IV value
 
     def get_raw_fair_price(self, side: Side) -> RawFairPrice:
         """
@@ -57,6 +57,7 @@ class OptionPricer(PricerBase):
         # is_call = self.option_type == 'call'
         # bs_price = self.black_scholes(spot_price, strike_price, time_to_expiry, risk_free_rate, self.iv, is_call)
 
+        # TODO: update for continuous funding rate
         funding_period_hours = D("8")
         funding_period_years = funding_period_hours / D(24 * 365)
         fair_price = self.perp_bs_price(

@@ -50,7 +50,8 @@ When a market event occurs, the strategy processes it as follows:
 6. Proposal Execution:
    - Places new orders based on the final proposal (`execute_orders_proposal`).
 
-This process ensures that the strategy continuously adapts to market conditions, maintains risk parameters, and provides liquidity efficiently.
+This process ensures that the strategy continuously adapts to market conditions,
+maintains risk parameters, and provides liquidity efficiently.
 """
 
 import asyncio
@@ -58,6 +59,7 @@ import os
 import re
 import time
 import traceback
+from dataclasses import dataclass
 from decimal import Decimal as D
 
 import numpy as np
@@ -86,14 +88,8 @@ from .utils.parameters_manager import Param, ParamsManager
 from .utils.risk_manager import RiskManager
 
 
-class PerpMarketMaker:
-    """
-    A class representing a perpetual market maker strategy.
-
-    This class implements a market making strategy for perpetual futures markets.
-    It manages order placement, pricing, risk management, and market data processing.
-    """
-
+@dataclass
+class StrategyParameters:
     PARAM_CLOSE_ONLY_MODE = "close_only_mode"
     PARAM_ENABLED = "enabled"
     PARAM_ORDER_LEVEL_SPREAD = "order_level_spread"
@@ -145,58 +141,8 @@ class PerpMarketMaker:
     PARAM_CANCEL_BY_EXCHANGE_ORDER_ID = "cancel_by_exchange_order_id"
     PARAM_ORDER_RATIO_TO_CANCEL_ALL = "order_ratio_to_cancel_all"
 
-    _reeval_task: asyncio.Future | None
-    already_tracked_orders: set[str]
-
-    def __init__(
-        self,
-        loop: asyncio.AbstractEventLoop,
-        rm: type[RiskManager] = RiskManager,
-        pm: type[ParamsManager] = ParamsManager,
-        mp: type[MetricsPublisher] = MetricsPublisher,
-        PricerClass: type[PricerBase] = PricerBase,
-        config_path: str | None = None,
-    ):
-        self.logger = structlog.get_logger(self.__class__.__name__)
-        self.loop = loop
-
-        if config_path is not None:
-            self.config = load_config(config_path, raise_error=False)
-        else:
-            self.config = {}
-
-        self.market_connector = get_connector("paradex_perp", loop=self.loop)
-
-        self.pricer = PricerClass(self)
-
-        self.algo_name = f"PARABOT_MM_{os.getenv('PARADEX_ID', 'default')}".upper()
-        self.market: str = os.environ["ALGO_PARAMS_MARKET"]
-
-        self.external_markets: str = os.environ["ALGO_PARAMS_PRICE_SOURCES"]
-
-        if self.external_markets not in [None, ""]:
-            self.external_market_symbol = self.external_markets.split(":")[-1]
-            self.external_market_exchange = self.external_markets.split(":")[0]
-            self.external_connector = get_connector(self.external_market_exchange, loop=self.loop)
-        else:
-            self.external_connector = None
-            self.external_market_symbol = None
-            self.external_market_exchange = None
-
-        self._smoothen_spot_price: ExponentialMovingAverage = None
-        self._smoothen_basis: ExponentialMovingAverage = None
-        self._smoothen_funding_rate: ExponentialMovingAverage = None
-        self._rolling_vol: RollingAnnualizedVolatility = None
-        self._rolling_premium: ExponentialMovingAverage = None
-
-        self._next_order_timestamp = 0
-        self._next_reeval_timestamp = 0
-        self._last_system_health_ok = self.now_ms()
-        self._last_re_sub_timestamp = self.now_ms()
-        self.close_vol_factor = D(0.1)
-
-        self.processing = False
-
+    @classmethod
+    def params(self):
         strategy_parameters = [
             Param(self.PARAM_CLOSE_ONLY_MODE, "False", bool),
             Param(self.PARAM_ENABLED, "False", bool),
@@ -249,10 +195,75 @@ class PerpMarketMaker:
             Param(self.PARAM_CANCEL_BY_EXCHANGE_ORDER_ID, "True", bool),
             Param(self.PARAM_ORDER_RATIO_TO_CANCEL_ALL, "0.5", D),
         ]
+        return strategy_parameters
+
+
+class PerpMarketMaker(StrategyParameters):
+    """
+    A class representing a perpetual market maker strategy.
+
+    This class implements a market making strategy for perpetual futures markets.
+    It manages order placement, pricing, risk management, and market data processing.
+    """
+
+    _reeval_task: asyncio.Future | None
+    already_tracked_orders: set[str]
+
+    def __init__(  # noqa: PLR0913
+        self,
+        loop: asyncio.AbstractEventLoop,
+        PricerClass: type[PricerBase],
+        config_path: str | None = None,
+        rm: type[RiskManager] = RiskManager,
+        pm: type[ParamsManager] = ParamsManager,
+        mp: type[MetricsPublisher] = MetricsPublisher,
+    ):
+        self.logger = structlog.get_logger(self.__class__.__name__)
+        self.loop = loop
+
+        if config_path is not None:
+            self.config = load_config(config_path, raise_error=False)
+        else:
+            self.config = {}
+
+        self.market_connector = get_connector("paradex_perp", loop=self.loop)
+
+        self.pricer = PricerClass(self)
+
+        self.algo_name = f"PARABOT_MM_{os.getenv('PARADEX_ID', 'default')}".upper()
+        self.market: str = os.environ["ALGO_PARAMS_MARKET"]
+
+        self.external_markets: str = os.environ["ALGO_PARAMS_PRICE_SOURCES"]
+
+        if self.external_markets not in [None, ""]:
+            self.external_market_symbol = self.external_markets.split(":")[-1]
+            self.external_market_exchange = self.external_markets.split(":")[0]
+            self.external_connector = get_connector(self.external_market_exchange, loop=self.loop)
+        else:
+            self.external_connector = None
+            self.external_market_symbol = None
+            self.external_market_exchange = None
+
+        self._smoothen_spot_price: ExponentialMovingAverage = None
+        self._smoothen_basis: ExponentialMovingAverage = None
+        self._smoothen_funding_rate: ExponentialMovingAverage = None
+        self._rolling_vol: RollingAnnualizedVolatility = None
+        self._rolling_premium: ExponentialMovingAverage = None
+
+        self._next_order_timestamp = 0
+        self._next_reeval_timestamp = 0
+        self._last_system_health_ok = self.now_ms()
+        self._last_re_sub_timestamp = self.now_ms()
+        self.close_vol_factor = D(0.1)
+
+        self.processing = False
+
+        self._params_manager = pm(
+            parent=self, params=StrategyParameters.params(), config=self.config.get("parameters", {})
+        )
 
         self._metrics_pub = mp()
         self._risk_manager = rm(parent=self)
-        self._params_manager = pm(parent=self, params=strategy_parameters, config=self.config.get("parameters", {}))
 
         self._reeval_task = None
 
@@ -1230,7 +1241,7 @@ class PerpMarketMaker:
             _premium_adj = max(min(_premium_adj, self.premium_adjustment_cap), -1 * self.premium_adjustment_cap)
             return _premium_adj
         else:
-            return 0
+            return D("0")
 
     def publish_metrics(self) -> None:
         final_ask = self.get_fair_price(Side.SELL)
