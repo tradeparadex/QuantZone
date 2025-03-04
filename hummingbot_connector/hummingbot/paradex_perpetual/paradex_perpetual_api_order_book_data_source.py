@@ -5,10 +5,8 @@ from collections.abc import Mapping
 from decimal import Decimal
 from typing import Any
 
-import paradex_perpetual_constants as CONSTANTS
-import paradex_perpetual_web_utils as web_utils
-from paradex_perpetual_derivative import ParadexPerpetualDerivative
-
+import hummingbot.paradex_perpetual.paradex_perpetual_constants as CONSTANTS
+import hummingbot.paradex_perpetual.paradex_perpetual_web_utils as web_utils
 from hummingbot.core.data_type.common import TradeType
 from hummingbot.core.data_type.funding_info import FundingInfo, FundingInfoUpdate
 from hummingbot.core.data_type.order_book_message import OrderBookMessage, OrderBookMessageType
@@ -17,6 +15,7 @@ from hummingbot.core.web_assistant.connections.data_types import WSJSONRequest
 from hummingbot.core.web_assistant.web_assistants_factory import WebAssistantsFactory
 from hummingbot.core.web_assistant.ws_assistant import WSAssistant
 from hummingbot.logger import HummingbotLogger
+from hummingbot.paradex_perpetual.paradex_perpetual_derivative import ParadexPerpetualDerivative
 
 
 class ParadexPerpetualAPIOrderBookDataSource(PerpetualAPIOrderBookDataSource):
@@ -27,7 +26,7 @@ class ParadexPerpetualAPIOrderBookDataSource(PerpetualAPIOrderBookDataSource):
     def __init__(
         self,
         trading_pairs: list[str],
-        connector: "ParadexPerpetualDerivative",
+        connector: ParadexPerpetualDerivative,
         api_factory: WebAssistantsFactory,
         domain: str = CONSTANTS.DOMAIN,
     ):

@@ -5,16 +5,9 @@ from collections.abc import AsyncIterable
 from decimal import Decimal
 from typing import Any
 
-import paradex_perpetual_constants as CONSTANTS
-import paradex_perpetual_web_utils as web_utils
+import hummingbot.paradex_perpetual.paradex_perpetual_constants as CONSTANTS
+import hummingbot.paradex_perpetual.paradex_perpetual_web_utils as web_utils
 from bidict import bidict
-from paradex_perpetual_api_order_book_data_source import ParadexPerpetualAPIOrderBookDataSource
-from paradex_perpetual_auth import ParadexPerpetualAuth
-from paradex_perpetual_user_stream_data_source import ParadexPerpetualUserStreamDataSource
-from paradex_py.common.order import Order as ParadexOrderObject
-from paradex_py.common.order import OrderSide as ParadexOrderSide
-from paradex_py.common.order import OrderType as ParadexOrderType
-
 from hummingbot.client.config.config_helpers import ClientConfigAdapter
 from hummingbot.connector.constants import s_decimal_NaN
 from hummingbot.connector.derivative.position import Position
@@ -32,6 +25,14 @@ from hummingbot.core.event.events import AccountEvent, PositionModeChangeEvent
 from hummingbot.core.utils.async_utils import safe_ensure_future, safe_gather
 from hummingbot.core.utils.estimate_fee import build_trade_fee
 from hummingbot.core.web_assistant.web_assistants_factory import WebAssistantsFactory
+from hummingbot.paradex_perpetual.paradex_perpetual_api_order_book_data_source import (
+    ParadexPerpetualAPIOrderBookDataSource,
+)
+from hummingbot.paradex_perpetual.paradex_perpetual_auth import ParadexPerpetualAuth
+from hummingbot.paradex_perpetual.paradex_perpetual_user_stream_data_source import ParadexPerpetualUserStreamDataSource
+from paradex_py.common.order import Order as ParadexOrderObject
+from paradex_py.common.order import OrderSide as ParadexOrderSide
+from paradex_py.common.order import OrderType as ParadexOrderType
 
 bpm_logger = None
 

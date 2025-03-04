@@ -1,8 +1,7 @@
 import time
 from typing import Any
 
-import paradex_perpetual_constants as CONSTANTS
-
+import hummingbot.paradex_perpetual.paradex_perpetual_constants as CONSTANTS
 from hummingbot.core.api_throttler.async_throttler import AsyncThrottler
 from hummingbot.core.api_throttler.data_types import LinkedLimitWeightPair, RateLimit
 from hummingbot.core.web_assistant.auth import AuthBase

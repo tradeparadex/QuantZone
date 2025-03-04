@@ -1,11 +1,8 @@
+from hummingbot.core.web_assistant.auth import AuthBase
+from hummingbot.core.web_assistant.connections.data_types import RESTRequest, WSRequest
 from paradex_py.account.account import ParadexAccount
 from paradex_py.api.api_client import ParadexApiClient
 from paradex_py.environment import PROD, TESTNET
-
-from hummingbot.core.web_assistant.auth import AuthBase
-from hummingbot.core.web_assistant.connections.data_types import RESTRequest, WSRequest
-
-breakpoint()
 
 
 class ParadexPerpetualAuth(AuthBase):
@@ -25,8 +22,8 @@ class ParadexPerpetualAuth(AuthBase):
         self._paradex_perpetual_l1_private_key = paradex_perpetual_l1_private_key
         self._paradex_perpetual_l2_private_key = paradex_perpetual_l2_private_key
 
-        self._paradex_account: ParadexAccount = None
-        self._rest_api_client: ParadexApiClient = None
+        self._paradex_account: ParadexAccount | None = None
+        self._rest_api_client: ParadexApiClient | None = None
 
     @property
     def paradex_account(self):

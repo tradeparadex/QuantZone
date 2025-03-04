@@ -1,9 +1,8 @@
 from decimal import Decimal
 
-from pydantic import Field, SecretStr
-
 from hummingbot.client.config.config_data_types import BaseConnectorConfigMap, ClientFieldData
 from hummingbot.core.data_type.trade_fee import TradeFeeSchema
+from pydantic import Field, SecretStr
 
 # Maker rebates(-0.02%) are paid out continuously on each trade directly to the trading wallet.(https://paradex.gitbook.io/paradex-docs/trading/fees)
 DEFAULT_FEES = TradeFeeSchema(
@@ -24,6 +23,7 @@ def validate_bool(value: str) -> str | None:
     valid_values = ("true", "yes", "y", "false", "no", "n")
     if value.lower() not in valid_values:
         return f"Invalid value, please choose value from {valid_values}"
+    return None
 
 
 class ParadexPerpetualConfigMap(BaseConnectorConfigMap):

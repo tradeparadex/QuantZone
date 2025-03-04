@@ -1,0 +1,11 @@
+[project]
+name = "hummingbot-connector"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "hummingbot>=20240714",
+    "paradex-py>=0.4.3",
+    "pydantic>=2.10.6",
+]

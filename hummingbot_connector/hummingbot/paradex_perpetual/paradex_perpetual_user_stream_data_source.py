@@ -2,16 +2,15 @@ import asyncio
 import time
 from typing import Any
 
-import paradex_perpetual_constants as CONSTANTS
-import paradex_perpetual_web_utils as web_utils
-from paradex_perpetual_derivative import ParadexPerpetualDerivative
-
+import hummingbot.paradex_perpetual.paradex_perpetual_constants as CONSTANTS
+import hummingbot.paradex_perpetual.paradex_perpetual_web_utils as web_utils
 from hummingbot.core.data_type.user_stream_tracker_data_source import UserStreamTrackerDataSource
 from hummingbot.core.web_assistant.auth import AuthBase
 from hummingbot.core.web_assistant.connections.data_types import WSJSONRequest
 from hummingbot.core.web_assistant.web_assistants_factory import WebAssistantsFactory
 from hummingbot.core.web_assistant.ws_assistant import WSAssistant
 from hummingbot.logger import HummingbotLogger
+from hummingbot.paradex_perpetual.paradex_perpetual_derivative import ParadexPerpetualDerivative
 
 
 class ParadexPerpetualUserStreamDataSource(UserStreamTrackerDataSource):
@@ -31,7 +30,7 @@ class ParadexPerpetualUserStreamDataSource(UserStreamTrackerDataSource):
         self._domain = domain
         self._api_factory = api_factory
         self._auth = auth
-        self._ws_assistants: list[WSAssistant] = []
+        self._ws_assistants: list[WSAssistant] | None = []
         self._connector = connector
         self._current_listen_key = None
         self._listen_for_user_stream_task = None
@@ -42,7 +41,7 @@ class ParadexPerpetualUserStreamDataSource(UserStreamTrackerDataSource):
 
     @property
     def last_recv_time(self) -> float:
-        if self._ws_assistant:
+        if self._ws_assistant is not None or len(self._ws_assistants) > 0:
             return self._ws_assistant.last_recv_time
         return 0
 
