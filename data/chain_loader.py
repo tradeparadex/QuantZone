@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pandas as pd
 from httpx import Client
+from paraclear_types import *
 from paradex_py.api.api_client import ParadexApiClient
 from paradex_py.api.models import SystemConfig
 from paradex_py.environment import PROD
@@ -23,8 +24,6 @@ from starknet_py.net.models import Address
 from starknet_py.proxy.contract_abi_resolver import ProxyConfig
 from starknet_py.proxy.proxy_check import ArgentProxyCheck, OpenZeppelinProxyCheck, ProxyCheck
 from starknet_py.serialization import serializer_for_event
-
-from utils.data.paraclear_types import *
 
 # Create module logger with NullHandler
 logger = logging.getLogger(__name__)
