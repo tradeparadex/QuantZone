@@ -104,14 +104,13 @@ class RiskManager:
 
         # Calculate the maximum latency for market data
         market_latency = (
-            np.max([ob.received_ts - ob.exchange_ts for ob in self.parent.market_connector.orderbooks.values()]) / 1e6
+            max(ob.received_ts - ob.exchange_ts for ob in self.parent.market_connector.orderbooks.values()) / 1e6
         )
 
         # If there is an external connector, calculate the maximum latency for external data
         if self.parent.external_connector:
             external_latency = (
-                np.max([ob.received_ts - ob.exchange_ts for ob in self.parent.external_connector.orderbooks.values()])
-                / 1e6
+                max(ob.received_ts - ob.exchange_ts for ob in self.parent.external_connector.orderbooks.values()) / 1e6
             )
         else:
             external_latency = 0
