@@ -18,6 +18,11 @@ class ExponentialMovingAverage:
         decay_on_read (bool): Whether to decay the EMA value on read.
     """
 
+    value: D
+    timestamp: float
+    half_life: D
+    lambda_: D
+
     def __init__(self, half_life_ms: D, decay_on_read: bool = False, init_val: D = D(0)):
         self.value = init_val
         # TODO: think about setting .timestamp as when init_val is accured.
@@ -33,7 +38,7 @@ class ExponentialMovingAverage:
         self.value *= decay_factor
         self.timestamp = current_timestamp
 
-    def update(self, new_value: float, new_timestamp: float):
+    def update(self, new_value: D, new_timestamp: float):
         """Update the EMA with a new value at a new timestamp."""
         if self.value is None:
             self.value = D(new_value)

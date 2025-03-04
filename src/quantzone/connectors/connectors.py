@@ -5,10 +5,10 @@ from decimal import Decimal as D
 
 import structlog
 
-from ..utils.data_methods import Depth, Level, TradingRules
+from ..utils.data_methods import Depth, Level, Order, TradingRules
 
 
-class ConnectorBase(ABC):
+class ExternalConnector(ABC):
     """
     An abstract base class for connectors in the trading system.
     """
@@ -35,8 +35,13 @@ class ConnectorBase(ABC):
         self._trade_callbacks = {}
 
     @abstractmethod
-    async def initialize(self):
-        pass
+    async def initialize(self): ...
+
+    @abstractmethod
+    async def start(self): ...
+
+    @abstractmethod
+    async def subscribe_to_data_channels(self, market, callback): ...
 
     def quantize_order_price(self, symbol: str, price: D):
         tick_size = self.trading_rules[symbol].min_price_increment
@@ -45,3 +50,26 @@ class ConnectorBase(ABC):
     def quantize_order_amount(self, symbol: str, amount: D):
         min_amount_increment = self.trading_rules[symbol].min_amount_increment
         return amount.quantize(min_amount_increment)
+
+
+class Connector(ExternalConnector):
+    active_orders: dict[str, Order]
+
+    def __init__(self, loop: asyncio.AbstractEventLoop):
+        super().__init__(loop)
+        self.active_orders = {}
+
+    @abstractmethod
+    async def setup_trading_rules(self, symbol): ...
+
+    @abstractmethod
+    def sync_open_orders(self, mkt): ...
+
+    @abstractmethod
+    async def subscribe_to_trade_channels(self, market, callback): ...
+
+    @abstractmethod
+    def get_position_size(self, mkt: str) -> D: ...
+
+    @abstractmethod
+    def cancel_all_orders(self, mkt): ...

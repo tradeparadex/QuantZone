@@ -17,10 +17,10 @@ from binance import AsyncClient, BinanceSocketManager
 
 from ..utils.async_utils import safe_ensure_future
 from ..utils.data_methods import Depth, Level, Ticker, UpdateType
-from .connector_base import ConnectorBase
+from .connectors import ExternalConnector
 
 
-class BinanceSpotConnector(ConnectorBase):
+class BinanceSpotConnector(ExternalConnector):
     """
     A connector class for interacting with the Binance spot exchange.
 

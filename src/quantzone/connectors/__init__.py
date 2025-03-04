@@ -1,7 +1,14 @@
-__all__ = ["BinanceSpotConnector", "BybitUTAConnector", "ConnectorBase", "ParadexPerpConnector", "get_connector"]
+__all__ = [
+    "BinanceSpotConnector",
+    "BybitUTAConnector",
+    "Connector",
+    "ExternalConnector",
+    "ParadexPerpConnector",
+    "get_connector",
+]
 
 from .binance_spot import BinanceSpotConnector
 from .bybit_uta import BybitUTAConnector
-from .connector import get_connector
-from .connector_base import ConnectorBase
+from .connector_factory import get_connector
+from .connectors import Connector, ExternalConnector
 from .paradex_perp import ParadexPerpConnector

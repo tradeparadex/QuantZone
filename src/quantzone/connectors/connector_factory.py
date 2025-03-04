@@ -9,11 +9,11 @@ trading platform.
 
 from .binance_spot import BinanceSpotConnector
 from .bybit_uta import BybitUTAConnector
-from .connector_base import ConnectorBase
+from .connectors import Connector, ExternalConnector
 from .paradex_perp import ParadexPerpConnector
 
 
-def get_connector(name: str, **kwargs) -> ConnectorBase:
+def get_connector(name: str, **kwargs) -> Connector | ExternalConnector:
     """
     Get the connector instance based on the provided name.
     """

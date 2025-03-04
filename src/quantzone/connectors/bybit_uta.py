@@ -29,10 +29,10 @@ from ..utils.data_methods import (
     TradingRules,
     UpdateType,
 )
-from .connector_base import ConnectorBase
+from .connectors import Connector
 
 
-class BybitUTAConnector(ConnectorBase):
+class BybitUTAConnector(Connector):
     """
     A connector class for interacting with the Bybit UTA exchange.
 
@@ -57,13 +57,11 @@ class BybitUTAConnector(ConnectorBase):
             self.exchange = "bybit_spot"
         self.key = key or os.getenv("BYBIT_UTA_API_KEY")
         self.secret = secret or os.getenv("BYBIT_UTA_API_SECRET")
-
         self.channel_type = channel
 
         self._http_client = None
         self._socket_manager = None
         self._private_socket_manager = None
-
         self._symbol_map = {}
 
     async def initialize(self):
@@ -106,7 +104,7 @@ class BybitUTAConnector(ConnectorBase):
             )
         return positions
 
-    async def setup_trading_rules(self, _market):
+    async def setup_trading_rules(self, symbol):
         """
         Set up trading rules for a market.
 
@@ -121,11 +119,15 @@ class BybitUTAConnector(ConnectorBase):
                 continue
             # FIX: shall do this for only one market
             _symbol = self._translate_symbol_back(market["symbol"])
-            self.trading_rules[_symbol] = TradingRules(
-                min_amount_increment=D(market["lotSizeFilter"]["qtyStep"]),
-                min_price_increment=D(market["priceFilter"]["tickSize"]),
-                min_notional_size=D(market["lotSizeFilter"]["minOrderQty"]),
-            )
+            if _symbol == symbol:
+                self.trading_rules[_symbol] = TradingRules(
+                    min_amount_increment=D(market["lotSizeFilter"]["qtyStep"]),
+                    min_price_increment=D(market["priceFilter"]["tickSize"]),
+                    min_notional_size=D(market["lotSizeFilter"]["minOrderQty"]),
+                )
+        if self.trading_rules.get(symbol) is None:
+            self.logger.error(f"no trading rules found for market: {symbol}")
+            raise ValueError(f"Trading rules not found for {symbol}")
 
     def insert_order(self, order: Order):
         """
@@ -397,3 +399,11 @@ class BybitUTAConnector(ConnectorBase):
         """Start the connector by connecting to WebSocket and subscribing to account channels."""
         await self._connect_to_ws()
         await self.subscribe_to_account_channels()
+
+    def sync_open_orders(self, mkt):
+        # TODO: placeholder
+        ...
+
+    def cancel_all_orders(self, mkt):
+        # TODO: placeholder
+        ...

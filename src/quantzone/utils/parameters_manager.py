@@ -55,8 +55,8 @@ class ParamsManager:
             param.value = value
         self.on_param_update = on_param_update
 
-    def get_param_value(self, tag: str):
-        return self.params[tag].value
+    def get_param_value(self, param: Param):
+        return self.params[param.tag].value
 
     def start(self):
         pass

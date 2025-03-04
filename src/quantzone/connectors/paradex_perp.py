@@ -38,10 +38,10 @@ from ..utils.data_methods import (
     TradingRules,
     UpdateType,
 )
-from .connector_base import ConnectorBase
+from .connectors import Connector
 
 
-class ParadexPerpConnector(ConnectorBase):
+class ParadexPerpConnector(Connector):
     """
     A connector class for interacting with the Paradex perpetual exchange.
 
@@ -98,7 +98,6 @@ class ParadexPerpConnector(ConnectorBase):
 
         self._account_callback = None
         self.internal_positions = {}
-        self.active_orders = {}
         self._order_counter = 0
         self.rate_limiter = SyncRateLimiter(
             int(os.getenv("PARADEX_RATE_LIMIT", "8"))
@@ -592,7 +591,7 @@ class ParadexPerpConnector(ConnectorBase):
         await self.paradex.ws_client.subscribe(ParadexWebsocketChannel.POSITIONS, callback=self._on_positions)
         await self.paradex.ws_client.subscribe(ParadexWebsocketChannel.TRADEBUSTS, callback=self._on_trade_bust)
 
-    async def setup_trading_rules(self, _market):
+    async def setup_trading_rules(self, symbol):
         """
         Set up trading rules for a market.
 
@@ -603,14 +602,15 @@ class ParadexPerpConnector(ConnectorBase):
         _para_markets = self.paradex.api_client.fetch_markets()
 
         for market in _para_markets["results"]:
-            if market["symbol"] == _market:
+            if market["symbol"] == symbol:
                 self.trading_rules[market["symbol"]] = TradingRules(
                     min_amount_increment=D(market["order_size_increment"]),
                     min_price_increment=D(market["price_tick_size"]),
                     min_notional_size=D(market["min_notional"]),
                 )
-        if _market not in self.trading_rules:
-            self.logger.error(f"no trading rules found for market: {_market}")
+        if symbol not in self.trading_rules:
+            self.logger.error(f"no trading rules found for market: {symbol}")
+            raise ValueError(f"no trading rules found for market: {symbol}")
 
     async def snapshots(self):
         """Take snapshots of current positions."""

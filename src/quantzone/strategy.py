@@ -59,15 +59,16 @@ import os
 import re
 import time
 import traceback
-from dataclasses import dataclass
 from decimal import Decimal as D
 
 import numpy as np
 import structlog
 
-from .connectors.connector import get_connector
-from .connectors.connector_base import ConnectorBase
+from .connectors.connector_factory import get_connector
+from .connectors.connectors import Connector, ExternalConnector
 from .pricer.base import PricerBase
+from .strategy_params import StrategeParamsMixin
+from .strategy_params import StrategyParameters as SParam
 from .utils.async_utils import safe_ensure_future
 from .utils.data_methods import (
     Order,
@@ -82,123 +83,13 @@ from .utils.data_methods import (
     UpdateType,
 )
 from .utils.ema import ExponentialMovingAverage
+from .utils.load_config import load_config
 from .utils.metrics_publisher import MetricsMessage, MetricsPublisher
-from .utils.misc_utils import load_config
 from .utils.parameters_manager import Param, ParamsManager
 from .utils.risk_manager import RiskManager
 
 
-@dataclass
-class StrategyParameters:
-    PARAM_CLOSE_ONLY_MODE = "close_only_mode"
-    PARAM_ENABLED = "enabled"
-    PARAM_ORDER_LEVEL_SPREAD = "order_level_spread"
-    PARAM_ORDER_LEVEL_AMOUNT_PCT = "order_level_amount_pct"
-    PARAM_ORDER_INSERT_TIME_SEC = "order_insert_time_sec"
-    PARAM_REEVAL_TIME_SEC = "reeval_time_sec"
-    PARAM_ORDER_REFRESH_TOLERANCE_PCT = "order_refresh_tolerance_pct"
-    PARAM_PRICE_ADJUSTMENT_BPS = "price_adjustment_bps"
-    PARAM_BUY_LEVELS = "buy_levels"
-    PARAM_SELL_LEVELS = "sell_levels"
-    PARAM_BID_SPREAD = "bid_spread"
-    PARAM_ASK_SPREAD = "ask_spread"
-    PARAM_MINIMUM_SPREAD = "minimum_spread"
-    PARAM_ORDER_AMOUNT_USD = "order_amount_usd"
-    PARAM_POS_LEAN_BPS_PER_100K_USD = "pos_lean_bps_per_100k_usd"
-    PARAM_MAX_POSITION_USD = "max_position_usd"
-    PARAM_TAKER_THRESHOLD_BPS = "taker_threshold_bps"
-    PARAM_PRICE_EMA_SEC = "price_ema_sec"
-    PARAM_FR_EMA_SEC = "fr_ema_sec"
-    PARAM_BASIS_EMA_SEC = "basis_ema_sec"
-    PARAM_MAX_LEVERAGE = "max_leverage"
-    PARAM_MAX_MARGIN_RATIO = "max_margin_ratio"
-    PARAM_GLOBAL_POS_LEAN_BPS_PER_100K_USD = "global_pos_lean_bps_per_100k_usd"
-    PARAM_PRICING_BASIS_FACTOR = "pricing_basis_factor"
-    PARAM_PRICING_VOLATILITY_FACTOR = "pricing_volatility_factor"
-    PARAM_VOL_WINDOW_SIZE = "vol_window_size"
-    PARAM_PRICING_FUNDING_RATE_FACTOR = "pricing_funding_rate_factor"
-    PARAM_EMPTY_BOOK_PENALTY = "empty_book_penalty"
-    PARAM_MAX_MARKET_LATENCY_SEC = "max_market_latency_sec"
-    PARAM_MAX_DATA_DELAY_SEC = "max_data_delay_sec"
-    PARAM_ORDER_LEVEL_SPREAD_LAMBDA = "order_level_spread_lambda"
-    PARAM_ORDER_SIZE_SPREAD_LAMBDA = "order_size_spread_lambda"
-    PARAM_PRICE_CEILING = "price_ceiling"
-    PARAM_PRICE_FLOOR = "price_floor"
-    PARAM_BULK_REQUESTS = "bulk_requests"
-    PARAM_BASE_VOLATILITY = "base_volatility"
-    PARAM_VOLATILITY_EXPONENT = "volatility_exponent"
-    PARAM_VOLATILITY_CAP = "volatility_cap"
-    PARAM_ANCHOR_PRICE = "anchor_price"
-    PARAM_EXTERNAL_PRICE_MULTIPLIER = "external_price_multiplier"
-    PARAM_FIXED_ORDER_SIZE = "fixed_order_size"
-    PARAM_PUBLISH_ORDER_LATENCY = "publish_order_latency"
-    PARAM_ORDER_SIZE_OBFUSCATION_FACTOR_PCT = "order_size_obfuscation_factor_pct"
-    PARAM_PREMIUM_FACTOR = "premium_factor"
-    PARAM_PREMIUM_WINDOW_SIZE_SEC = "premium_window_size_sec"
-    PARAM_PREMIUM_ADJUSTMENT_CAP = "premium_adjustment_cap"
-    PARAM_TAKE_PROFIT_BPS = "take_profit_bps"
-    PARAM_TAKE_PROFIT_DECAY_FACTOR = "take_profit_decay_factor_sec"
-    PARAM_CANCEL_BY_EXCHANGE_ORDER_ID = "cancel_by_exchange_order_id"
-    PARAM_ORDER_RATIO_TO_CANCEL_ALL = "order_ratio_to_cancel_all"
-
-    @classmethod
-    def params(self):
-        strategy_parameters = [
-            Param(self.PARAM_CLOSE_ONLY_MODE, "False", bool),
-            Param(self.PARAM_ENABLED, "False", bool),
-            Param(self.PARAM_PRICE_ADJUSTMENT_BPS, "0", D),
-            Param(self.PARAM_ORDER_LEVEL_SPREAD, "2", D),
-            Param(self.PARAM_ORDER_LEVEL_SPREAD_LAMBDA, "0.5", D),
-            Param(self.PARAM_ORDER_SIZE_SPREAD_LAMBDA, "0.8", D),
-            Param(self.PARAM_ORDER_LEVEL_AMOUNT_PCT, "20", D),
-            Param(self.PARAM_REEVAL_TIME_SEC, "1", float),
-            Param(self.PARAM_ORDER_INSERT_TIME_SEC, "2", float),
-            Param(self.PARAM_ORDER_REFRESH_TOLERANCE_PCT, "0.1", D),
-            Param(self.PARAM_BUY_LEVELS, "4", int),
-            Param(self.PARAM_SELL_LEVELS, "4", int),
-            Param(self.PARAM_BID_SPREAD, "0.01", D),
-            Param(self.PARAM_ASK_SPREAD, "0.01", D),
-            Param(self.PARAM_MINIMUM_SPREAD, "0", D),
-            Param(self.PARAM_ORDER_AMOUNT_USD, "400", D),
-            Param(self.PARAM_FIXED_ORDER_SIZE, "0", D),
-            Param(self.PARAM_POS_LEAN_BPS_PER_100K_USD, "200", D),
-            Param(self.PARAM_MAX_POSITION_USD, "2000", D),
-            Param(self.PARAM_TAKER_THRESHOLD_BPS, "10", D),
-            Param(self.PARAM_PRICE_EMA_SEC, "60", float),
-            Param(self.PARAM_FR_EMA_SEC, "2880", float),
-            Param(self.PARAM_BASIS_EMA_SEC, "2880", float),
-            Param(self.PARAM_MAX_LEVERAGE, "4", D),
-            Param(self.PARAM_MAX_MARGIN_RATIO, "10", D),
-            Param(self.PARAM_GLOBAL_POS_LEAN_BPS_PER_100K_USD, "200", D),
-            Param(self.PARAM_PRICING_BASIS_FACTOR, "0.5", D),
-            Param(self.PARAM_PRICING_VOLATILITY_FACTOR, "0.1", D),
-            Param(self.PARAM_PRICING_FUNDING_RATE_FACTOR, "0.5", D),
-            Param(self.PARAM_VOL_WINDOW_SIZE, "1000", int),
-            Param(self.PARAM_EMPTY_BOOK_PENALTY, "0.01", D),
-            Param(self.PARAM_MAX_MARKET_LATENCY_SEC, "10", float),
-            Param(self.PARAM_MAX_DATA_DELAY_SEC, "800", float),
-            Param(self.PARAM_PRICE_CEILING, "0", D),
-            Param(self.PARAM_PRICE_FLOOR, "0", D),
-            Param(self.PARAM_BULK_REQUESTS, "True", bool),
-            Param(self.PARAM_BASE_VOLATILITY, "0.05", D),
-            Param(self.PARAM_VOLATILITY_EXPONENT, "2", D),
-            Param(self.PARAM_VOLATILITY_CAP, "1", D),
-            Param(self.PARAM_EXTERNAL_PRICE_MULTIPLIER, "1", D),
-            Param(self.PARAM_ANCHOR_PRICE, "0", D),
-            Param(self.PARAM_PUBLISH_ORDER_LATENCY, "False", bool),
-            Param(self.PARAM_ORDER_SIZE_OBFUSCATION_FACTOR_PCT, "0", D),
-            Param(self.PARAM_PREMIUM_FACTOR, "0", D),
-            Param(self.PARAM_PREMIUM_WINDOW_SIZE_SEC, "1800", float),
-            Param(self.PARAM_PREMIUM_ADJUSTMENT_CAP, "0.001", D),
-            Param(self.PARAM_TAKE_PROFIT_BPS, "0", D),
-            Param(self.PARAM_TAKE_PROFIT_DECAY_FACTOR, "60", D),
-            Param(self.PARAM_CANCEL_BY_EXCHANGE_ORDER_ID, "True", bool),
-            Param(self.PARAM_ORDER_RATIO_TO_CANCEL_ALL, "0.5", D),
-        ]
-        return strategy_parameters
-
-
-class PerpMarketMaker(StrategyParameters):
+class PerpMarketMaker(StrategeParamsMixin):
     """
     A class representing a perpetual market maker strategy.
 
@@ -208,6 +99,15 @@ class PerpMarketMaker(StrategyParameters):
 
     _reeval_task: asyncio.Future | None
     already_tracked_orders: set[str]
+    market_connector: Connector
+    external_connector: ExternalConnector | None
+    external_market_symbol: str | None
+    external_market_exchange: str | None
+    _smoothen_spot_price: ExponentialMovingAverage | None
+    _smoothen_basis: ExponentialMovingAverage | None
+    _smoothen_funding_rate: ExponentialMovingAverage | None
+    _rolling_vol: RollingAnnualizedVolatility | None
+    _rolling_premium: ExponentialMovingAverage | None
 
     def __init__(  # noqa: PLR0913
         self,
@@ -244,24 +144,20 @@ class PerpMarketMaker(StrategyParameters):
             self.external_market_symbol = None
             self.external_market_exchange = None
 
-        self._smoothen_spot_price: ExponentialMovingAverage = None
-        self._smoothen_basis: ExponentialMovingAverage = None
-        self._smoothen_funding_rate: ExponentialMovingAverage = None
-        self._rolling_vol: RollingAnnualizedVolatility = None
-        self._rolling_premium: ExponentialMovingAverage = None
+        self._smoothen_spot_price = None
+        self._smoothen_basis = None
+        self._smoothen_funding_rate = None
+        self._rolling_vol = None
+        self._rolling_premium = None
 
-        self._next_order_timestamp = 0
-        self._next_reeval_timestamp = 0
+        self._next_order_timestamp = 0.0
+        self._next_reeval_timestamp = 0.0
         self._last_system_health_ok = self.now_ms()
         self._last_re_sub_timestamp = self.now_ms()
         self.close_vol_factor = D(0.1)
 
         self.processing = False
-
-        self._params_manager = pm(
-            parent=self, params=StrategyParameters.params(), config=self.config.get("parameters", {})
-        )
-
+        self._params_manager = pm(parent=self, params=SParam.params(), config=self.config.get("parameters", {}))
         self._metrics_pub = mp()
         self._risk_manager = rm(parent=self)
 
@@ -273,212 +169,24 @@ class PerpMarketMaker(StrategyParameters):
         self.already_tracked_orders = set()
 
     @property
-    def is_enabled(self):
-        return self._params_manager.get_param_value(self.PARAM_ENABLED)
-
-    @property
-    def take_profit_bps(self) -> D:
-        return self._params_manager.get_param_value(self.PARAM_TAKE_PROFIT_BPS)
-
-    @property
-    def take_profit_decay_factor_sec(self) -> D:
-        return self._params_manager.get_param_value(self.PARAM_TAKE_PROFIT_DECAY_FACTOR)
-
-    @property
-    def publish_order_latency(self) -> bool:
-        return self._params_manager.get_param_value(self.PARAM_PUBLISH_ORDER_LATENCY)
-
-    @property
-    def premium_correction_factor(self) -> D:
-        return self._params_manager.get_param_value(self.PARAM_PREMIUM_FACTOR)
-
-    @property
-    def price_adjustment(self) -> D:
-        return self._params_manager.get_param_value(self.PARAM_PRICE_ADJUSTMENT_BPS) / D(10_000)
-
-    @property
-    def order_insert_time_ms(self) -> float:
-        return self._params_manager.get_param_value(self.PARAM_ORDER_INSERT_TIME_SEC) * 1000
-
-    @property
-    def reevaluation_time_sec(self) -> float:
-        return self._params_manager.get_param_value(self.PARAM_REEVAL_TIME_SEC) * 1000
-
-    @property
-    def base_volatility(self) -> D:
-        return self._params_manager.get_param_value(self.PARAM_BASE_VOLATILITY)
-
-    @property
-    def volatility_cap(self) -> D:
-        return self._params_manager.get_param_value(self.PARAM_VOLATILITY_CAP)
-
-    @property
-    def premium_adjustment_cap(self) -> D:
-        return self._params_manager.get_param_value(self.PARAM_PREMIUM_ADJUSTMENT_CAP)
-
-    @property
-    def volatility_exponent(self) -> D:
-        return self._params_manager.get_param_value(self.PARAM_VOLATILITY_EXPONENT)
-
-    @property
     def active_orders(self) -> list[Order]:
         return list(self.market_connector.active_orders.values())
 
     @property
-    def pricing_basis_factor(self) -> D:
-        return self._params_manager.get_param_value(self.PARAM_PRICING_BASIS_FACTOR)
-
-    @property
-    def pricing_volatility_factor(self) -> D:
-        return self._params_manager.get_param_value(self.PARAM_PRICING_VOLATILITY_FACTOR)
-
-    @property
-    def vol_window_size(self) -> int:
-        return self._params_manager.get_param_value(self.PARAM_VOL_WINDOW_SIZE)
-
-    @property
-    def pricing_funding_rate_factor(self) -> D:
-        return self._params_manager.get_param_value(self.PARAM_PRICING_FUNDING_RATE_FACTOR)
-
-    @property
-    def premium_window_size_sec(self) -> float:
-        return self._params_manager.get_param_value(self.PARAM_PREMIUM_WINDOW_SIZE_SEC)
-
-    @property
-    def price_ema_sec(self) -> float:
-        return self._params_manager.get_param_value(self.PARAM_PRICE_EMA_SEC)
-
-    @property
-    def fr_ema_sec(self) -> float:
-        return self._params_manager.get_param_value(self.PARAM_FR_EMA_SEC)
-
-    @property
-    def basis_ema_sec(self) -> float:
-        return self._params_manager.get_param_value(self.PARAM_BASIS_EMA_SEC)
-
-    @property
-    def pos_lean_bps_per_100k(self) -> D:
-        return self._params_manager.get_param_value(self.PARAM_POS_LEAN_BPS_PER_100K_USD) / D(100_000) / D(10_000)
-
-    @property
-    def pos_global_lean_bps_per_100k(self) -> D:
-        return (
-            self._params_manager.get_param_value(self.PARAM_GLOBAL_POS_LEAN_BPS_PER_100K_USD) / D(100_000) / D(10_000)
-        )
-
-    @property
-    def empty_book_penalty(self) -> D:
-        return self._params_manager.get_param_value(self.PARAM_EMPTY_BOOK_PENALTY)
-
-    @property
-    def max_market_latency_ms(self) -> float:
-        return self._params_manager.get_param_value(self.PARAM_MAX_MARKET_LATENCY_SEC) * 1000
-
-    @property
-    def max_data_delay_ms(self) -> float:
-        return self._params_manager.get_param_value(self.PARAM_MAX_DATA_DELAY_SEC) * 1000
-
-    @property
-    def order_level_spread(self) -> D:
-        return self._params_manager.get_param_value(self.PARAM_ORDER_LEVEL_SPREAD)
-
-    @property
-    def order_level_amount_bps(self) -> D:
-        return self._params_manager.get_param_value(self.PARAM_ORDER_LEVEL_AMOUNT_PCT) / D("100")
-
-    @property
-    def buy_levels(self) -> int:
-        return self._params_manager.get_param_value(self.PARAM_BUY_LEVELS)
-
-    @property
-    def sell_levels(self) -> int:
-        return self._params_manager.get_param_value(self.PARAM_SELL_LEVELS)
-
-    @property
-    def bid_spread(self) -> D:
-        return self._params_manager.get_param_value(self.PARAM_BID_SPREAD) / D("100")
-
-    @property
-    def ask_spread(self) -> D:
-        return self._params_manager.get_param_value(self.PARAM_ASK_SPREAD) / D("100")
-
-    @property
-    def order_level_spread_lambda(self) -> D:
-        return self._params_manager.get_param_value(self.PARAM_ORDER_LEVEL_SPREAD_LAMBDA)
-
-    @property
-    def order_size_spread_lambda(self) -> D:
-        return self._params_manager.get_param_value(self.PARAM_ORDER_SIZE_SPREAD_LAMBDA)
-
-    @property
-    def price_ceiling(self) -> D:
-        return self._params_manager.get_param_value(self.PARAM_PRICE_CEILING)
-
-    @property
-    def price_floor(self) -> D:
-        return self._params_manager.get_param_value(self.PARAM_PRICE_FLOOR)
-
-    @property
-    def taker_threshold_bps(self) -> D:
-        return self._params_manager.get_param_value(self.PARAM_TAKER_THRESHOLD_BPS)
-
-    @property
-    def order_amount_usd(self) -> D:
-        return self._params_manager.get_param_value(self.PARAM_ORDER_AMOUNT_USD)
-
-    @property
-    def max_leverage(self) -> D:
-        return self._params_manager.get_param_value(self.PARAM_MAX_LEVERAGE)
-
-    @property
-    def max_margin_ratio(self) -> D:
-        return self._params_manager.get_param_value(self.PARAM_MAX_MARGIN_RATIO)
-
-    @property
-    def max_position_usd(self) -> D:
-        return self._params_manager.get_param_value(self.PARAM_MAX_POSITION_USD)
-
-    @property
-    def order_refresh_tolerance(self) -> D:
-        return self._params_manager.get_param_value(self.PARAM_ORDER_REFRESH_TOLERANCE_PCT) / D("100")
-
-    @property
-    def order_size_obfuscation_factor_pct(self) -> D:
-        return self._params_manager.get_param_value(self.PARAM_ORDER_SIZE_OBFUSCATION_FACTOR_PCT) / D("100")
-
-    @property
-    def minimum_spread(self) -> D:
-        return self._params_manager.get_param_value(self.PARAM_MINIMUM_SPREAD) / D("100")
-
-    @property
-    def bulk_requests(self) -> bool:
-        return self._params_manager.get_param_value(self.PARAM_BULK_REQUESTS)
-
-    @property
-    def external_price_multiplier(self) -> D:
-        return self._params_manager.get_param_value(self.PARAM_EXTERNAL_PRICE_MULTIPLIER)
-
-    @property
-    def fixed_order_size(self) -> D:
-        return self._params_manager.get_param_value(self.PARAM_FIXED_ORDER_SIZE)
-
-    @property
     async def is_close_only_mode(self):
-        if self._params_manager.get_param_value(self.PARAM_CLOSE_ONLY_MODE):
+        if self._params_manager.get_param_value(SParam.PARAM_CLOSE_ONLY_MODE):
             return True
         return not (await self._risk_manager.can_quote_to_open())
 
     @property
     def use_anchor_price(self) -> bool:
+        anchor_price = self._params_manager.get_param_value(SParam.PARAM_ANCHOR_PRICE)
         return (
-            self._params_manager.get_param_value(self.PARAM_ANCHOR_PRICE) is not None
-            and self._params_manager.get_param_value(self.PARAM_ANCHOR_PRICE).is_finite()
-            and self._params_manager.get_param_value(self.PARAM_ANCHOR_PRICE) != D("0")
+            anchor_price is not None
+            and isinstance(anchor_price, D)
+            and anchor_price.is_finite()
+            and anchor_price != D("0")
         )
-
-    @property
-    def anchor_price(self) -> D:
-        return self._params_manager.get_param_value(self.PARAM_ANCHOR_PRICE)
 
     @property
     def min_order_amount(self) -> D:
@@ -514,19 +222,6 @@ class PerpMarketMaker(StrategyParameters):
         return bool(pattern.match(self.market))
 
     @property
-    def cancel_by(self) -> str:
-        by_exchange_order_id = self._params_manager.get_param_value(self.PARAM_CANCEL_BY_EXCHANGE_ORDER_ID)
-        if by_exchange_order_id or by_exchange_order_id is None:
-            order_identifier = "exchange_order_id"
-        else:
-            order_identifier = "client_order_id"
-        return order_identifier
-
-    @property
-    def order_ratio_to_cancel_all(self) -> D:
-        return self._params_manager.get_param_value(self.PARAM_ORDER_RATIO_TO_CANCEL_ALL)
-
-    @property
     def factored_basis(self) -> D:
         """
         Calculate the factored basis value.
@@ -534,6 +229,7 @@ class PerpMarketMaker(StrategyParameters):
         Returns:
             Decimal: The factored basis value.
         """
+        assert self._smoothen_basis is not None
         return self._smoothen_basis.value * self.pricing_basis_factor
 
     @property
@@ -544,6 +240,7 @@ class PerpMarketMaker(StrategyParameters):
         Returns:
             Decimal: The factored funding rate value.
         """
+        assert self._smoothen_funding_rate is not None
         return self._smoothen_funding_rate.value * self.pricing_funding_rate_factor
 
     def get_order_amount(self, price: D | None = None) -> D:
@@ -551,17 +248,19 @@ class PerpMarketMaker(StrategyParameters):
             return self.order_amount
         return self.order_amount_usd / price
 
-    def now_ns(self) -> int:
+    @staticmethod
+    def now_ns() -> int:
         """
         Return the current time in nanoseconds.
         """
         return int(time.time_ns())
 
-    def now_ms(self) -> int:
+    @staticmethod
+    def now_ms() -> int:
         """
         Return the current time in milliseconds.
         """
-        return int(self.now_ns() / 1e6)
+        return int(PerpMarketMaker.now_ns() / 1e6)
 
     def _publish_strat_metric(self, tag: str, val: D | float) -> None:
         """
@@ -592,14 +291,16 @@ class PerpMarketMaker(StrategyParameters):
         """
         Create a base proposal for the market making strategy.
         """
-        market: ConnectorBase = self.market_connector
+        assert self.market_connector is not None
         buys = []
         sells = []
 
         fair_buy = self.get_fair_price(side=Side.BUY)
         fair_sell = self.get_fair_price(side=Side.SELL)
 
-        _num_ticks_increment = self.order_level_spread * market.trading_rules[self.market].min_price_increment
+        _num_ticks_increment = (
+            self.order_level_spread * self.market_connector.trading_rules[self.market].min_price_increment
+        )
         _order_increment = self.order_level_amount_bps / D(10_000) * self.order_amount
 
         vol_ratio = self.get_vol_ratio()
@@ -607,13 +308,13 @@ class PerpMarketMaker(StrategyParameters):
 
         _obfuscation_factor = 1 + self.order_size_obfuscation_factor_pct * D(np.random.uniform(0.8, 1.2))
         for level in range(0, self.buy_levels):
-            price = fair_buy - ((np.exp(self.order_level_spread_lambda * level) - 1) * _num_ticks_increment)
+            price = fair_buy - ((D.exp(self.order_level_spread_lambda * level) - 1) * _num_ticks_increment)
             if self.fixed_order_size > 0:
                 size = self.fixed_order_size
             else:
                 size = self.get_order_amount(price)
 
-            size += _order_increment * (np.exp(self.order_size_spread_lambda * level) - 1)
+            size += _order_increment * (D.exp(self.order_size_spread_lambda * level) - 1)
             size *= _obfuscation_factor
 
             if size > 0:
@@ -621,14 +322,14 @@ class PerpMarketMaker(StrategyParameters):
 
         _obfuscation_factor = 1 + self.order_size_obfuscation_factor_pct * D(np.random.uniform(0.8, 1.2))
         for level in range(0, self.sell_levels):
-            price = fair_sell + ((np.exp(self.order_level_spread_lambda * level) - 1) * _num_ticks_increment)
+            price = fair_sell + ((D.exp(self.order_level_spread_lambda * level) - 1) * _num_ticks_increment)
 
             if self.fixed_order_size > 0:
                 size = self.fixed_order_size
             else:
                 size = self.get_order_amount(price)
 
-            size += _order_increment * (np.exp(self.order_size_spread_lambda * level) - 1)
+            size += _order_increment * (D.exp(self.order_size_spread_lambda * level) - 1)
             size *= _obfuscation_factor
 
             if size > 0:
@@ -640,13 +341,13 @@ class PerpMarketMaker(StrategyParameters):
         """
         Quantize the prices and sizes of the orders in the proposal.
         """
-        market: ConnectorBase = self.market_connector
+        assert self.market_connector is not None
         for buy in proposal.buys:
-            buy.price = market.quantize_order_price(self.market, buy.price)
-            buy.size = market.quantize_order_amount(self.market, buy.size)
+            buy.price = self.market_connector.quantize_order_price(self.market, buy.price)
+            buy.size = self.market_connector.quantize_order_amount(self.market, buy.size)
         for sell in proposal.sells:
-            sell.price = market.quantize_order_price(self.market, sell.price)
-            sell.size = market.quantize_order_amount(self.market, sell.size)
+            sell.price = self.market_connector.quantize_order_price(self.market, sell.price)
+            sell.size = self.market_connector.quantize_order_amount(self.market, sell.size)
 
         # filter if size is less than min_order_amount
         proposal.buys = [buy for buy in proposal.buys if buy.size > 0]
@@ -690,13 +391,14 @@ class PerpMarketMaker(StrategyParameters):
         if not price.is_finite():
             price = self._smoothen_spot_price.value
 
-        ids_to_cancel = []
+        ids_to_cancel: list[str] = []
         info_template = (
             f"Order is below minimum spread ({self.minimum_spread}). Canceling Order " + "{} below min spread."
         )
         for order in self.active_orders:
             negation = -1 if order.side == Side.BUY else 1
             if (negation * (order.price - price) / price) < self.minimum_spread / 2:
+                assert order.client_order_id is not None
                 ids_to_cancel.append(order.client_order_id)
         self.cancel_multiple_orders(ids_to_cancel, info_template=info_template)
 
@@ -802,7 +504,7 @@ class PerpMarketMaker(StrategyParameters):
                     proposal.buys[idx] = PriceSize(top_ask, new_size, OrderType.LIMIT)
                 elif buy.price >= top_ask:
                     proposal.buys[idx].price = top_bid - (
-                        (np.exp(self.order_level_spread_lambda * idx) - 1) * price_tick
+                        (D.exp(self.order_level_spread_lambda * idx) - 1) * price_tick
                     )
 
         if not top_bid.is_nan() and len(proposal.sells) > 0:
@@ -817,7 +519,7 @@ class PerpMarketMaker(StrategyParameters):
                     proposal.sells[idx] = PriceSize(top_bid, new_size, OrderType.LIMIT)
                 elif sell.price <= top_bid:
                     proposal.sells[idx].price = top_ask + (
-                        (np.exp(self.order_level_spread_lambda * idx) - 1) * price_tick
+                        (D.exp(self.order_level_spread_lambda * idx) - 1) * price_tick
                     )
 
     def apply_order_levels_modifiers(self, proposal: Proposal) -> None:
@@ -841,8 +543,7 @@ class PerpMarketMaker(StrategyParameters):
         """
         if self.now_ms() < self._next_order_timestamp:
             return
-        else:
-            self._next_order_timestamp = self.now_ms() + self.order_insert_time_ms
+        self._next_order_timestamp = self.now_ms() + self.order_insert_time_ms
 
         all_orders = []
         for oreq in proposal.buys:
@@ -920,7 +621,6 @@ class PerpMarketMaker(StrategyParameters):
                 return
             else:
                 self._next_reeval_timestamp = self.now_ms() + self.reevaluation_time_sec
-
             if not self.market_data_ready():
                 self.processing = False
                 return
@@ -1005,9 +705,10 @@ class PerpMarketMaker(StrategyParameters):
             self.market_connector.cancel_all_orders(self.market)
         else:
             for order in self.active_orders:
+                assert order.client_order_id is not None
                 self.cancel_order(self.market, order.client_order_id)
 
-    def get_price_by_type(self, price_type: PriceType = None) -> D:
+    def get_price_by_type(self, price_type: PriceType | None = None) -> D:
         """
         Get the price by type.
         """
@@ -1020,10 +721,11 @@ class PerpMarketMaker(StrategyParameters):
 
         return D(_val) if _val is not None else None
 
-    def get_external_connector_price(self, mkt, price_type: PriceType = None) -> D:
+    def get_external_connector_price(self, mkt, price_type: PriceType | None = None) -> D | None:
         """
         Get the price by type from the external connector.
         """
+        assert self.external_connector is not None
         if mkt not in self.external_connector.orderbooks:
             self.logger.warning(f"External connector does not have {mkt}.")
             return None
@@ -1068,14 +770,14 @@ class PerpMarketMaker(StrategyParameters):
         Get the account position for all markets in USD.
         """
         return D(
-            np.sum(
-                [np.sum([D(p["cost_usd"]), D(p["unrealized_pnl"])]) for p in self.market_connector.positions.values()]
-            )
+            sum([sum([D(p["cost_usd"]), D(p["unrealized_pnl"])]) for p in self.market_connector.positions.values()])
         )
 
     def update_emas(self, timestamp: float) -> None:
         inst_rate = self.get_inst_rate()
         inst_basis = self.get_inst_basis()
+        assert self._smoothen_funding_rate is not None
+        assert self._smoothen_basis is not None
 
         self._smoothen_funding_rate.update(inst_rate, timestamp)
         self._smoothen_basis.update(inst_basis, timestamp)
@@ -1089,10 +791,13 @@ class PerpMarketMaker(StrategyParameters):
             self.logger.warning("Price is None. Skipping EMA update.")
             return
 
+        assert self._smoothen_spot_price is not None
+        assert self._rolling_vol is not None
         self._smoothen_spot_price.update(_price, timestamp)
         self._rolling_vol.update(_price, timestamp)
 
     def update_premium_ema(self) -> None:
+        assert self._rolling_premium is not None
         if self.market in self.market_connector.latest_fundings:
             base_price = self.get_base_price(PriceType.Mid)
 
@@ -1103,30 +808,30 @@ class PerpMarketMaker(StrategyParameters):
             spot_price = D(self.market_connector.latest_fundings[self.market]["oracle_price"])
             self._rolling_premium.update((base_price / spot_price - 1), self.now_ms())
 
-    def get_base_price(self, price_type: PriceType) -> float:
+    def get_base_price(self, price_type: PriceType) -> D | None:
         if self.external_connector is None:
-            raw_spot = self.get_price_by_type(price_type)
-        else:
-            raw_spot = self.get_external_connector_price(self.external_market_symbol, price_type)
-        return raw_spot
+            return self.get_price_by_type(price_type)
 
-    def get_vol_ratio(self) -> float:
+        return self.get_external_connector_price(self.external_market_symbol, price_type)
+
+    def get_vol_ratio(self) -> D:
+        assert self._rolling_vol is not None
         volatility = self._rolling_vol.get_value()
 
         # Calculate the ratio of current volatility to base volatility
         return volatility / self.base_volatility
 
-    def get_vol_adjustment(self) -> float:
+    def get_vol_adjustment(self) -> D:
         vol_ratio = self.get_vol_ratio()
 
         # Apply a power function to exaggerate changes
         exponent = self.volatility_exponent
-        vol_nonlinear = min(self.volatility_cap, np.power(vol_ratio, exponent))
+        vol_nonlinear = min(self.volatility_cap, pow(vol_ratio, exponent))
         vol_adj = vol_nonlinear * self.pricing_volatility_factor / 2
 
         return vol_adj
 
-    def get_fair_price(self, side: Side = None) -> float:
+    def get_fair_price(self, side: Side | None = None) -> D:
         """
         Get the fair price. The quoting strategy will be based on the returned value.
         """
@@ -1137,6 +842,7 @@ class PerpMarketMaker(StrategyParameters):
 
         ref_price = self.get_base_price(PriceType.Mid)
         if ref_price is None:
+            assert self._smoothen_spot_price is not None
             ref_price = self._smoothen_spot_price.value
 
         cur_pos_usd = cur_pos * ref_price
@@ -1200,6 +906,7 @@ class PerpMarketMaker(StrategyParameters):
             final_fair = fair
 
         if self.take_profit_bps > 0:
+            assert self.market_connector is not None
             avg_entry_price = self.market_connector.get_avg_entry_price(self.market)
             if avg_entry_price:
                 time_since_entry_sec = (
@@ -1210,7 +917,9 @@ class PerpMarketMaker(StrategyParameters):
                 # Linear decay factor between 0 and 1
                 decay_factor = min(D(time_since_entry_sec) / self.take_profit_decay_factor_sec, 1)
                 self.logger.info(
-                    f"take_profit avg_entry_price: {avg_entry_price}, time_since_entry_sec: {time_since_entry_sec}, decay_factor: {decay_factor}"
+                    f"take_profit avg_entry_price: {avg_entry_price}, "
+                    f"time_since_entry_sec: {time_since_entry_sec}, "
+                    f"decay_factor: {decay_factor}"
                 )
 
                 if cur_pos > 0 and side == Side.SELL:
@@ -1237,6 +946,7 @@ class PerpMarketMaker(StrategyParameters):
 
     def get_premium_adjustment(self) -> D:
         if self.premium_correction_factor is not None:
+            assert self._rolling_premium is not None
             _premium_adj = -1 * self._rolling_premium.value * self.premium_correction_factor
             _premium_adj = max(min(_premium_adj, self.premium_adjustment_cap), -1 * self.premium_adjustment_cap)
             return _premium_adj
@@ -1274,8 +984,9 @@ class PerpMarketMaker(StrategyParameters):
         ratio_quoted_market_ask = final_ask / market_ask - 1
         self._publish_strat_metric("ratio_quoted_market_bid", ratio_quoted_market_bid)
         self._publish_strat_metric("ratio_quoted_market_ask", ratio_quoted_market_ask)
+        assert self._rolling_vol is not None
         self._publish_strat_metric("volatility", self._rolling_vol.get_value())
-
+        assert self._rolling_premium is not None
         self._publish_strat_metric("rolling_premium", self._rolling_premium.value)
 
     def start(self) -> None:
@@ -1288,12 +999,12 @@ class PerpMarketMaker(StrategyParameters):
         self._params_manager.publish(Param("algo_env", os.getenv("PARADEX_ENVIRONMENT", "unknown")))
         self._params_manager.publish_state()
 
-        self._smoothen_spot_price = ExponentialMovingAverage(half_life_ms=self.price_ema_sec * 1000, init_val=None)
-        self._smoothen_basis = ExponentialMovingAverage(half_life_ms=self.basis_ema_sec * 1000)
-        self._smoothen_funding_rate = ExponentialMovingAverage(half_life_ms=self.fr_ema_sec * 1000)
+        self._smoothen_spot_price = ExponentialMovingAverage(half_life_ms=D(self.price_ema_sec * 1000))
+        self._smoothen_basis = ExponentialMovingAverage(half_life_ms=D(self.basis_ema_sec * 1000))
+        self._smoothen_funding_rate = ExponentialMovingAverage(half_life_ms=D(self.fr_ema_sec * 1000))
         self._rolling_vol = RollingAnnualizedVolatility(window_size=self.vol_window_size)
 
-        self._rolling_premium = ExponentialMovingAverage(half_life_ms=self.premium_window_size_sec * 1000)
+        self._rolling_premium = ExponentialMovingAverage(half_life_ms=D(self.premium_window_size_sec * 1000))
 
         self.logger.info("Started.")
 
