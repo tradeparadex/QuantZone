@@ -10,6 +10,7 @@ Override to implement your own metrics publisher.
 import json
 import os
 import socket
+from dataclasses import dataclass
 from decimal import Decimal
 
 import structlog
@@ -22,6 +23,7 @@ class DecimalEncoder(json.JSONEncoder):
         return super().default(o)
 
 
+@dataclass
 class MetricsMessage:
     """
     A class representing a metrics message with various attributes.
@@ -35,15 +37,12 @@ class MetricsMessage:
         account (str): The account identifier (optional).
     """
 
-    def __init__(
-        self, timestamp: int, process_name: str, tag_name: str, market: str, value: float, account: str = None
-    ):
-        self.timestamp = timestamp
-        self.process_name = process_name
-        self.tag_name = tag_name
-        self.market = market
-        self.value = value
-        self.account = account
+    timestamp: int
+    process_name: str
+    tag_name: str
+    market: str
+    value: float
+    account: str | None = None
 
     def to_dict(self):
         return {

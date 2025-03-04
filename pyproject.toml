@@ -3,12 +3,11 @@ name = "quantzone"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 dependencies = [
     "binance>=0.3",
-    # "hummingbot>=20240714",
     "marshmallow>=3.26.1",
-    "numpy==1.26.4",
+    "numpy>=2.2.3",
     "pandas>=2.2.3",
     "python-dotenv>=1.0.1",
     "ruamel-yaml>=0.18.10",
@@ -18,7 +17,7 @@ dependencies = [
     "structlog>=25.1.0",
     "paradex-py>=0.4.3",
     "pybit>=5.9.0",
-    "python-binance>=1.0.27",
+    "python-binance>=1.0.28",
     "scipy-stubs>=1.15.2.0",
 ]
 
@@ -29,11 +28,14 @@ build-backend = "hatchling.build"
 [tool.uv]
 default-groups = ["dev"]
 
+[tool.uv.workspace]
+members = ["data"]
+
 [dependency-groups]
 dev = ["mypy>=1.15.0", "pyright>=1.1.395", "pytest>=8.3.4"]
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.13"
 warn_return_any = true
 warn_unused_configs = true
 check_untyped_defs = true

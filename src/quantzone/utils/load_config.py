@@ -18,7 +18,6 @@ def load_config(file_path: str, raise_error: bool = True) -> dict:
     """
     try:
         with open(file_path) as file:
-            # return ruamel.yaml.safe_load(file)
             return YAML(typ="safe", pure=True).load(file)
     except Exception as e:
         if raise_error:

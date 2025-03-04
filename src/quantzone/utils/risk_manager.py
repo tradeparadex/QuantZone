@@ -78,7 +78,8 @@ class RiskManager:
         # Get the last updated timestamp from the account info
         last_account = self.parent.market_connector.account_info["updated_at"]
 
-        # If there is an external connector, get the oldest received timestamp from all orderbooks in the external connector
+        # If there is an external connector, get the oldest received timestamp
+        # from all orderbooks in the external connector
         if self.parent.external_connector:
             oldest_external_book = (
                 np.min([ob.received_ts for ob in self.parent.external_connector.orderbooks.values()]) / 1e6

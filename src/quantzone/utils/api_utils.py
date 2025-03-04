@@ -6,10 +6,12 @@ It includes a thread-safe rate limiter to control the rate of API requests.
 import time
 from threading import Lock
 
+
 class SyncRateLimiter:
     """
     A thread-safe rate limiter to control the rate of API requests.
     """
+
     def __init__(self, rate_limit):
         self.rate_limit = rate_limit
         self.tokens = rate_limit

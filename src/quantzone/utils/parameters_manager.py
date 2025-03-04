@@ -16,6 +16,7 @@ class Param:
         self.tag = name
         self.val_type = val_type
         self.value = value
+        self._value = self._parse_value(value, val_type)
 
     @property
     def value(self):
@@ -52,7 +53,6 @@ class ParamsManager:
             # Order of priority: env > config > default
             value = os.getenv(env_key, self.config.get(env_key, param.value))
             param.value = value
-
         self.on_param_update = on_param_update
 
     def get_param_value(self, tag: str):
