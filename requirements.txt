@@ -1,4 +1,4 @@
-marshmallow==3.22.0
+marshmallow==3.26.2
 numpy==2.1.0
 pandas==2.2.3
 paradex_py==0.4.2
